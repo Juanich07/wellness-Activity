@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Dumbbell,
-  Clock,
   TrendingUp,
   BookOpen,
   Trophy,
@@ -30,9 +29,8 @@ export default function EmployeeNav() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', Icon: LayoutDashboard },
     { label: 'Activities', href: '/activities', Icon: Dumbbell },
-    { label: 'Break', href: '/break', Icon: Clock },
-    { label: 'Progress', href: '/progress', Icon: TrendingUp },
     { label: 'Education', href: '/education', Icon: BookOpen },
+    { label: 'Progress', href: '/progress', Icon: TrendingUp },
     { label: 'Challenges', href: '/challenges', Icon: Trophy },
     { label: 'Feedback', href: '/feedback', Icon: MessageSquare },
   ];

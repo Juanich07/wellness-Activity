@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, BellRing } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import { Icon } from '@/components/common/Icon';
@@ -62,6 +62,10 @@ export default function BreakPage() {
   const [timeRemaining, setTimeRemaining] = useState(phases[0].duration * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [breakCompleted, setBreakCompleted] = useState(false);
+  const [alarmMinutes, setAlarmMinutes] = useState(5);
+  const [alarmSecondsRemaining, setAlarmSecondsRemaining] = useState(0);
+  const [isAlarmRunning, setIsAlarmRunning] = useState(false);
+  const [alarmMessage, setAlarmMessage] = useState('Set a reminder for your next check-in.');
 
   const currentPhase = phases[currentPhaseIndex];
   const totalDuration = phases.reduce((sum, p) => sum + p.duration, 0);
@@ -98,6 +102,50 @@ export default function BreakPage() {
     return () => clearInterval(interval);
   }, [isRunning, timeRemaining, currentPhaseIndex, phases]);
 
+  // Alarm countdown logic
+  useEffect(() => {
+    let alarmInterval: NodeJS.Timeout;
+
+    if (isAlarmRunning && alarmSecondsRemaining > 0) {
+      alarmInterval = setInterval(() => {
+        setAlarmSecondsRemaining((prev) => prev - 1);
+      }, 1000);
+    }
+
+    if (isAlarmRunning && alarmSecondsRemaining === 0) {
+      setIsAlarmRunning(false);
+      setAlarmMessage('Alarm finished. Time for your wellness break!');
+
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          void new Notification('Wellness Alarm', {
+            body: 'Time for your next wellness action.',
+          });
+        } else if (Notification.permission === 'default') {
+          void Notification.requestPermission();
+        }
+      }
+
+      if (typeof window !== 'undefined' && 'AudioContext' in window) {
+        const audioContext = new AudioContext();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.08;
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.6);
+      }
+    }
+
+    return () => clearInterval(alarmInterval);
+  }, [isAlarmRunning, alarmSecondsRemaining]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -116,6 +164,34 @@ export default function BreakPage() {
       setBreakCompleted(true);
       setIsRunning(false);
     }
+  };
+
+  const startAlarm = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+
+    const safeMinutes = Math.max(1, Math.min(120, alarmMinutes));
+    setAlarmMinutes(safeMinutes);
+    setAlarmSecondsRemaining(safeMinutes * 60);
+    setIsAlarmRunning(true);
+    setAlarmMessage('Alarm is running. You will be notified when time is up.');
+  };
+
+  const toggleAlarm = () => {
+    if (alarmSecondsRemaining === 0) {
+      void startAlarm();
+      return;
+    }
+
+    setIsAlarmRunning((prev) => !prev);
+    setAlarmMessage((current) => (isAlarmRunning ? 'Alarm paused.' : current));
+  };
+
+  const stopAlarm = () => {
+    setIsAlarmRunning(false);
+    setAlarmSecondsRemaining(0);
+    setAlarmMessage('Alarm stopped.');
   };
 
   if (breakCompleted) {
@@ -183,6 +259,43 @@ export default function BreakPage() {
           <p className="text-xs text-slate-500">
             {completedDuration} / {totalDuration} minutes completed
           </p>
+        </div>
+      </Card>
+
+      {/* Alarm / Reminder */}
+      <Card title="Reminder Alarm">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">{alarmMessage}</p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm font-medium text-slate-700" htmlFor="alarm-minutes">
+              Minutes
+            </label>
+            <input
+              id="alarm-minutes"
+              type="number"
+              min={1}
+              max={120}
+              value={alarmMinutes}
+              onChange={(event) => setAlarmMinutes(Number(event.target.value) || 1)}
+              className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+            <div className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm font-semibold text-slate-800">
+              {formatTime(alarmSecondsRemaining)}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={isAlarmRunning ? 'secondary' : 'primary'}
+              onClick={toggleAlarm}
+              className="flex items-center gap-2"
+            >
+              {isAlarmRunning ? <Pause className="h-4 w-4" /> : <BellRing className="h-4 w-4" />}
+              {isAlarmRunning ? 'Pause Alarm' : alarmSecondsRemaining > 0 ? 'Resume Alarm' : 'Start Alarm'}
+            </Button>
+            <Button variant="ghost" onClick={stopAlarm}>Stop Alarm</Button>
+          </div>
         </div>
       </Card>
 

@@ -13,10 +13,12 @@ pnpm-lock.yaml
 /.next/
 /out/
 /build
+*.tsbuildinfo
 
 # Misc
 .DS_Store
 *.pem
+serviceAccount.json
 .env
 .env.local
 .env.*.local

@@ -1,7 +1,14 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { Lottie } from 'lottie-react';
+import { CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { Icon } from '@/components/common/Icon';
 import Card from '@/components/common/Card';
+import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
+import { db } from '@/lib/firebase';
+import { mockActivities } from '@/lib/mockData';
 
 interface ScheduleItem {
   id: string;
@@ -9,57 +16,486 @@ interface ScheduleItem {
   time: string;
   type: string;
   duration: number;
+  description?: string;
+  difficulty?: string;
+  animationKey?: string;
   icon?: string;
 }
 
 interface DailyScheduleProps {
-  items: ScheduleItem[];
+  items?: ScheduleItem[];
+  onProgressChange?: (completedCount: number, totalCount: number) => void;
 }
+
+type ScheduleSourceActivity = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  duration: number;
+  difficulty: string;
+  animationKey: string;
+  icon: string;
+};
+
+type PersistedDailyPlan = {
+  dateKey: string;
+  ids: string[];
+  completedIds: string[];
+};
+
+const DAILY_PLAN_STORAGE_KEY = 'wellness-daily-plan-v1';
+const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
+const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
+const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
+  {
+    id: 'emergency-1',
+    title: 'Morning Stretching Routine',
+    description: 'Gentle full-body stretching to start your day.',
+    type: 'Stretching',
+    duration: 10,
+    difficulty: 'Easy',
+    animationKey: '',
+    icon: 'Accessibility',
+  },
+  {
+    id: 'emergency-2',
+    title: 'Walk Around the Office',
+    description: 'Step away from your workstation and take a short walk around your office.',
+    type: 'Walking',
+    duration: 5,
+    difficulty: 'Easy',
+    animationKey: 'walking-office-man',
+    icon: 'Footprints',
+  },
+  {
+    id: 'emergency-3',
+    title: 'Desk Exercise Break',
+    description: 'Quick desk-safe movements to loosen up and improve circulation.',
+    type: 'Desk exercises',
+    duration: 8,
+    difficulty: 'Easy',
+    animationKey: '',
+    icon: 'Monitor',
+  },
+  {
+    id: 'emergency-4',
+    title: 'Aerobic Dance Session',
+    description: 'Fun and energetic movement to boost heart rate and mood.',
+    type: 'Aerobic',
+    duration: 12,
+    difficulty: 'Medium',
+    animationKey: '',
+    icon: 'Music2',
+  },
+];
+
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const shuffle = <T,>(items: T[]) => {
+  const cloned = [...items];
+
+  for (let i = cloned.length - 1; i > 0; i -= 1) {
+    const randomIndex = Math.floor(Math.random() * (i + 1));
+    [cloned[i], cloned[randomIndex]] = [cloned[randomIndex], cloned[i]];
+  }
+
+  return cloned;
+};
+
+const readPersistedPlan = (): PersistedDailyPlan | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(DAILY_PLAN_STORAGE_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as PersistedDailyPlan;
+    if (!parsed || !Array.isArray(parsed.ids) || !Array.isArray(parsed.completedIds) || typeof parsed.dateKey !== 'string') {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error('Failed to parse persisted daily plan', error);
+    return null;
+  }
+};
+
+const writePersistedPlan = (plan: PersistedDailyPlan) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(DAILY_PLAN_STORAGE_KEY, JSON.stringify(plan));
+};
+
+const resolveActivityAnimation = (item: ScheduleItem) => {
+  const animationKey = item.animationKey?.trim().toLowerCase();
+  const title = item.title.trim().toLowerCase();
+
+  if (animationKey === WALKING_OFFICE_ANIMATION_KEY || title === 'walk around the office') {
+    return walkingOfficeManAnimation;
+  }
+
+  return null;
+};
+
+const formatSeconds = (totalSeconds: number) => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
 
 /**
  * DailySchedule Component
- * Compact mobile card matching the provided design.
+ * Random 3 activities per day with timer + completion tracking.
  */
-export default function DailySchedule({ items }: DailyScheduleProps) {
+export default function DailySchedule({ items = [], onProgressChange }: DailyScheduleProps) {
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(items.slice(0, 3));
+  const [completedIds, setCompletedIds] = useState<string[]>([]);
+  const [selectedItem, setSelectedItem] = useState<ScheduleItem | null>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeDateKey, setActiveDateKey] = useState(getLocalDateKey());
+
   const iconMap: Record<string, string> = {
-    'Stretching': 'Yoga',
-    'Walking': 'Footprints',
-    'Aerobic': 'Music',
-    'Strengthening': 'Zap',
+    Stretching: 'Accessibility',
+    Walking: 'Footprints',
+    Aerobic: 'Music2',
+    Strengthening: 'Dumbbell',
     'Desk exercises': 'Monitor',
   };
 
+  const fallbackActivities: ScheduleSourceActivity[] = mockActivities.map((activity) => ({
+    id: String(activity.activityId),
+    title: activity.title,
+    description: activity.description,
+    type: activity.category,
+    duration: Number(activity.durationMinutes || 5),
+    difficulty: String(activity.difficulty || ''),
+    animationKey: '',
+    icon: String(activity.icon || ''),
+  }));
+
+  const applyDailyPlan = (sourceActivities: ScheduleSourceActivity[]) => {
+    const todayKey = getLocalDateKey();
+    setActiveDateKey(todayKey);
+
+    if (sourceActivities.length === 0) {
+      setScheduleItems([]);
+      setCompletedIds([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const persisted = readPersistedPlan();
+    const canReusePersisted =
+      persisted?.dateKey === todayKey &&
+      persisted.ids.every((id) => sourceActivities.some((activity) => activity.id === id));
+
+    const dailyIds = canReusePersisted
+      ? (persisted?.ids ?? [])
+      : shuffle(sourceActivities.map((activity) => activity.id)).slice(0, Math.min(3, sourceActivities.length));
+
+    const dailyActivities = dailyIds
+      .map((id, index) => {
+        const found = sourceActivities.find((activity) => activity.id === id);
+        if (!found) {
+          return null;
+        }
+
+        return {
+          id: found.id,
+          title: found.title,
+          time: TIME_SLOTS[index] ?? `${9 + index}:00 AM`,
+          type: found.type,
+          duration: found.duration > 0 ? found.duration : 5,
+          description: found.description,
+          difficulty: found.difficulty,
+          animationKey: found.animationKey,
+          icon: found.icon,
+        } as ScheduleItem;
+      })
+      .filter((activity): activity is ScheduleItem => Boolean(activity));
+
+    const safeCompleted = (canReusePersisted ? persisted?.completedIds ?? [] : []).filter((id) => dailyActivities.some((activity) => activity.id === id));
+
+    setScheduleItems(dailyActivities);
+    setCompletedIds(safeCompleted);
+    writePersistedPlan({
+      dateKey: todayKey,
+      ids: dailyActivities.map((activity) => activity.id),
+      completedIds: safeCompleted,
+    });
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'activities'),
+      (snapshot) => {
+        const allActivities: ScheduleSourceActivity[] = snapshot.docs
+          .map((documentSnapshot) => ({
+            id: documentSnapshot.id,
+            title: String(documentSnapshot.data().title ?? '').trim(),
+            description: String(documentSnapshot.data().description ?? '').trim(),
+            type: String(documentSnapshot.data().category ?? 'Activity').trim() || 'Activity',
+            duration: Number(documentSnapshot.data().durationMinutes ?? 5),
+            difficulty: String(documentSnapshot.data().difficulty ?? '').trim(),
+            animationKey: String(documentSnapshot.data().animationKey ?? '').trim(),
+            icon: String(documentSnapshot.data().icon ?? '').trim(),
+            active: documentSnapshot.data().active !== false,
+          }))
+          .filter((activity) => activity.active && activity.title)
+          .map(({ active, ...activity }) => activity);
+
+        const source = allActivities.length > 0
+          ? allActivities
+          : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
+
+        applyDailyPlan(source);
+      },
+      (error) => {
+        console.error('Failed to load schedule activities', error);
+        const fromPropItems: ScheduleSourceActivity[] = items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description || '',
+          type: item.type,
+          duration: item.duration,
+          difficulty: item.difficulty || '',
+          animationKey: item.animationKey || '',
+          icon: item.icon || '',
+        }));
+
+        const source = fromPropItems.length > 0
+          ? fromPropItems
+          : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
+
+        applyDailyPlan(source);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [items]);
+
+  useEffect(() => {
+    if (!selectedItem || !isTimerRunning || secondsRemaining <= 0) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSecondsRemaining((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [selectedItem, isTimerRunning, secondsRemaining]);
+
+  useEffect(() => {
+    if (!selectedItem || secondsRemaining !== 0 || !isTimerRunning) {
+      return;
+    }
+
+    setIsTimerRunning(false);
+    setCompletedIds((current) => {
+      if (current.includes(selectedItem.id)) {
+        return current;
+      }
+
+      return [...current, selectedItem.id];
+    });
+  }, [isTimerRunning, secondsRemaining, selectedItem]);
+
+  useEffect(() => {
+    writePersistedPlan({
+      dateKey: activeDateKey,
+      ids: scheduleItems.map((item) => item.id),
+      completedIds,
+    });
+
+    onProgressChange?.(completedIds.length, scheduleItems.length);
+  }, [activeDateKey, completedIds, onProgressChange, scheduleItems]);
+
+  useEffect(() => {
+    if (isLoading || scheduleItems.length > 0) {
+      return;
+    }
+
+    const todayKey = getLocalDateKey();
+    const emergencyIds = shuffle(EMERGENCY_ACTIVITIES.map((activity) => activity.id)).slice(0, 3);
+    const emergencySchedule = emergencyIds
+      .map((id, index) => {
+        const found = EMERGENCY_ACTIVITIES.find((activity) => activity.id === id);
+        if (!found) {
+          return null;
+        }
+
+        return {
+          id: found.id,
+          title: found.title,
+          time: TIME_SLOTS[index] ?? `${9 + index}:00 AM`,
+          type: found.type,
+          duration: found.duration,
+          description: found.description,
+          difficulty: found.difficulty,
+          animationKey: found.animationKey,
+          icon: found.icon,
+        } as ScheduleItem;
+      })
+      .filter((activity): activity is ScheduleItem => Boolean(activity));
+
+    setActiveDateKey(todayKey);
+    setScheduleItems(emergencySchedule);
+    setCompletedIds([]);
+    writePersistedPlan({
+      dateKey: todayKey,
+      ids: emergencySchedule.map((activity) => activity.id),
+      completedIds: [],
+    });
+  }, [isLoading, scheduleItems.length]);
+
+  const completedSet = useMemo(() => new Set(completedIds), [completedIds]);
+
+  const handleOpenItem = (item: ScheduleItem) => {
+    setSelectedItem(item);
+    setSecondsRemaining(item.duration * 60);
+    setIsTimerRunning(false);
+  };
+
+  const closeModal = () => {
+    setSelectedItem(null);
+    setIsTimerRunning(false);
+    setSecondsRemaining(0);
+  };
+
+  const markComplete = (itemId: string) => {
+    setCompletedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+  };
+
   return (
-    <Card className="rounded-[22px] bg-[#f5f8f8] p-4 shadow-none ring-0">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-base font-bold text-slate-900">Schedule</h3>
-        <span className="text-lg text-slate-400">•••</span>
-      </div>
+    <>
+      <Card className="rounded-[22px] bg-[#f5f8f8] p-4 shadow-none ring-0">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-900">Schedule</h3>
+          <span className="text-lg text-slate-400">...</span>
+        </div>
 
-      <div className="space-y-2">
-        {items.length === 0 ? (
-          <p className="text-center text-sm text-slate-500">No activities scheduled yet</p>
-        ) : (
-          items.slice(0, 3).map((item) => {
-            const iconName = item.icon || iconMap[item.type] || 'Calendar';
+        <div className="space-y-2">
+          {isLoading ? (
+            <p className="text-center text-sm text-slate-500">Loading schedule...</p>
+          ) : scheduleItems.length === 0 ? (
+            <p className="text-center text-sm text-slate-500">No activities scheduled yet</p>
+          ) : (
+            scheduleItems.map((item) => {
+              const iconName = item.icon || iconMap[item.type] || 'Calendar';
+              const isCompleted = completedSet.has(item.id);
 
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-xl bg-white px-3 py-2 shadow-sm"
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
-                  <Icon name={iconName} size={18} className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
-                  <p className="text-[11px] text-slate-500">{item.time} • {item.duration}min</p>
-                </div>
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleOpenItem(item)}
+                  className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2 text-left shadow-sm transition hover:bg-teal-50"
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
+                    <Icon name={iconName} size={18} className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
+                    <p className="text-[11px] text-slate-500">{item.time} | {item.duration}min</p>
+                  </div>
+                  {isCompleted ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </Card>
+
+      {selectedItem ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Today's Activity</p>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">{selectedItem.title}</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedItem.type} | {selectedItem.duration} min
+                </p>
               </div>
-            );
-          })
-        )}
-      </div>
-    </Card>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close schedule activity"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {resolveActivityAnimation(selectedItem) ? (
+              <div className="mt-4 flex justify-center rounded-2xl bg-slate-50 py-3">
+                <Lottie src={resolveActivityAnimation(selectedItem)} loop autoplay className="h-24 w-24" />
+              </div>
+            ) : null}
+
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Description</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {selectedItem.description || 'No description available.'}
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+              <div className="mb-2 flex items-center gap-2 text-slate-600">
+                <Clock3 className="h-4 w-4" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Timer</span>
+              </div>
+              <p className="text-3xl font-bold text-slate-900">{formatSeconds(secondsRemaining)}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTimerRunning((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  {isTimerRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  {isTimerRunning ? 'Pause' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTimerRunning(false);
+                    setSecondsRemaining(selectedItem.duration * 60);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markComplete(selectedItem.id)}
+                  className="rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700"
+                >
+                  Mark Complete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

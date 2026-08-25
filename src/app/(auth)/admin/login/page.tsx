@@ -3,13 +3,10 @@
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-const ADMIN_UIDS = new Set([
-  '5rzSFrBCVZWQgEBad1sih9Qk7rFm2',
-  'jmB6wZp6nLdEAr47h4td',
-]);
-
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +19,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const [{ getIdTokenResult, signInWithEmailAndPassword }, { auth }] = await Promise.all([
+      const [{ getIdTokenResult, signInWithEmailAndPassword, signOut }, { auth }] = await Promise.all([
         import('firebase/auth'),
         import('@/lib/firebase'),
       ]);
@@ -30,14 +27,29 @@ export default function LoginPage() {
       const credentials = await signInWithEmailAndPassword(auth, email, password);
       const tokenResult = await getIdTokenResult(credentials.user, true);
       const token = await credentials.user.getIdToken();
-      let isAdmin = ADMIN_UIDS.has(credentials.user.uid);
+      const adminDocRef = doc(db, 'admin', credentials.user.uid);
+      let adminRecord: { active?: boolean } | null = null;
 
-      const role = isAdmin ? 'admin' : (tokenResult.claims.role as string | undefined) || 'employee';
-      const cookieValue = `token=${token}; path=/; max-age=3600; samesite=lax`;
+      try {
+        const adminDocSnapshot = await getDoc(adminDocRef);
+        adminRecord = adminDocSnapshot.exists() ? (adminDocSnapshot.data() as { active?: boolean }) : null;
+      } catch (readError) {
+        console.warn('Admin record lookup failed, falling back to UID/custom-claim check.', readError);
+      }
 
-      document.cookie = cookieValue;
-      document.cookie = `role=${role}; path=/; max-age=3600; samesite=lax`;
-      router.replace(role === 'admin' ? '/admin/dashboard' : '/dashboard');
+      const isAdmin =
+        tokenResult.claims.role === 'admin' ||
+        adminRecord?.active === true;
+
+      if (!isAdmin) {
+        await signOut(auth);
+        setError('This account is not allowed to access the admin area.');
+        return;
+      }
+
+      document.cookie = `token=${token}; path=/; max-age=3600; samesite=lax`;
+      document.cookie = 'role=admin; path=/; max-age=3600; samesite=lax';
+      router.replace('/admin/dashboard');
     } catch (signInError) {
       const firebaseError = signInError as { code?: string; message?: string };
       const message = firebaseError.code
@@ -45,33 +57,35 @@ export default function LoginPage() {
         : 'Invalid email or password. Please try again.';
 
       setError(message);
-      console.error('Sign-in error:', signInError);
+      console.error('Admin sign-in error:', signInError);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="card p-8 space-y-6">
+    <div className="card space-y-6 p-8">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Wellness App</h1>
-        <p className="text-slate-600 mt-2">Employee Health & Wellness Platform</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-600">Admin Login</p>
+        <h1 className="mt-2 text-3xl font-bold text-slate-900">Admin Panel</h1>
+        <p className="mt-2 text-slate-600">Access employee participation, reports, and wellness management tools.</p>
       </div>
 
       <form className="space-y-4" onSubmit={handleSignIn}>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
           <input
             type="email"
-            placeholder="you@company.com"
+            placeholder="admin@company.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
           <input
             type="password"
             placeholder="••••••••"
@@ -90,21 +104,14 @@ export default function LoginPage() {
 
         <div className="space-y-3">
           <button className="btn-primary w-full" type="submit" disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Signing In...' : 'Admin Sign In'}
           </button>
 
           <Link
-            href="/dashboard"
+            href="/login"
             className="flex w-full items-center justify-center rounded-lg border-2 border-teal-600 px-4 py-2.5 text-sm font-semibold text-teal-600 transition-colors hover:bg-teal-50"
           >
-            Preview Dashboard →
-          </Link>
-
-          <Link
-            href="/admin/login"
-            className="flex w-full items-center justify-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            Admin Login →
+            Employee Login →
           </Link>
         </div>
       </form>

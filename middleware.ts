@@ -5,9 +5,14 @@ import { jwtDecode } from 'jwt-decode';
 interface DecodedToken {
   uid: string;
   email: string;
+  role?: 'employee' | 'admin';
   custom_claims?: {
     role: 'employee' | 'admin';
   };
+}
+
+function resolveRole(token: DecodedToken) {
+  return token.custom_claims?.role || token.role || 'employee';
 }
 
 // Protected routes configuration
@@ -19,16 +24,23 @@ const PROTECTED_ROUTES = {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const roleCookie = request.cookies.get('role')?.value;
 
   // Allow public access to auth routes without token
-  if (pathname.startsWith('/(auth)') || pathname.startsWith('/login')) {
+  if (
+    pathname.startsWith('/(auth)') ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/admin/login')
+  ) {
     const token = request.cookies.get('token')?.value;
 
     // If user already logged in, redirect to appropriate dashboard
     if (token) {
       try {
         const decoded = jwtDecode<DecodedToken>(token);
-        const role = decoded.custom_claims?.role || 'employee';
+        const role = roleCookie === 'admin' || roleCookie === 'employee'
+          ? roleCookie
+          : resolveRole(decoded);
 
         if (pathname.includes('/login')) {
           return NextResponse.redirect(
@@ -53,12 +65,16 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
 
   if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(
+      new URL(pathname.startsWith('/admin') ? '/admin/login' : '/login', request.url)
+    );
   }
 
   try {
     const decoded = jwtDecode<DecodedToken>(token);
-    const role = decoded.custom_claims?.role || 'employee';
+    const role = roleCookie === 'admin' || roleCookie === 'employee'
+      ? roleCookie
+      : resolveRole(decoded);
 
     // Role-based route protection
     if (pathname.startsWith('/admin')) {

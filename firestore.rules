@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admin/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admin/$(request.auth.uid)).data.active == true;
+    }
+
+    // Admin profile records. Used by the admin login flow.
+    match /admin/{adminId} {
+      allow read: if signedIn() && request.auth.uid == adminId;
+      allow write: if isAdmin();
+    }
+
+    // Employee user records. Employees can read/write their own doc.
+    // Admins can read all employee docs for participation and reports.
+    match /user/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if signedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Wellness activities shown in employee app.
+    // Read is public so preview routes can display content without login.
+    // Writes are restricted to admin accounts.
+    match /activities/{activityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Education topics accessible to all for reading, managed by admins.
+    match /education/{topicId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Progress records accessible to all for reading, managed by admins.
+    match /progress/{progressId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default deny for everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -7,69 +7,74 @@ import Button from '@/components/common/Button';
 import Card from '@/components/common/Card';
 import { db } from '@/lib/firebase';
 
-type EducationRecord = {
+type ProgressRecord = {
   id: string;
-  topic: string;
-  shortDescription: string;
-  keyPoints: string;
-  category: string;
+  title: string;
+  description: string;
+  targetValue: number;
+  unit: string;
   active: boolean;
   [key: string]: unknown;
 };
 
-type EducationFormState = {
-  topic: string;
-  shortDescription: string;
-  keyPoints: string;
-  category: string;
+type ProgressFormState = {
+  title: string;
+  description: string;
+  targetValue: string;
+  unit: string;
   active: boolean;
 };
 
-const defaultFormState: EducationFormState = {
-  topic: '',
-  shortDescription: '',
-  keyPoints: '',
-  category: 'Education',
+const defaultFormState: ProgressFormState = {
+  title: '',
+  description: '',
+  targetValue: '30',
+  unit: 'days',
   active: true,
 };
 
 const asText = (value: unknown) => String(value ?? '').trim();
 
-export default function AdminEducationPage() {
-  const [topics, setTopics] = useState<EducationRecord[]>([]);
+const toNumber = (value: string, fallbackValue: number) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallbackValue;
+};
+
+export default function AdminProgressPage() {
+  const [items, setItems] = useState<ProgressRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTopic, setEditingTopic] = useState<EducationRecord | null>(null);
-  const [form, setForm] = useState<EducationFormState>(defaultFormState);
+  const [editingItem, setEditingItem] = useState<ProgressRecord | null>(null);
+  const [form, setForm] = useState<ProgressFormState>(defaultFormState);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
-      collection(db, 'education'),
+      collection(db, 'progress'),
       (snapshot) => {
-        const loadedTopics = snapshot.docs
+        const loadedItems = snapshot.docs
           .map((documentSnapshot) => ({
             id: documentSnapshot.id,
-            topic: asText(documentSnapshot.data().topic || documentSnapshot.data().title),
-            shortDescription: asText(documentSnapshot.data().shortDescription || documentSnapshot.data().content),
-            keyPoints: asText(documentSnapshot.data().keyPoints),
-            category: asText(documentSnapshot.data().category || 'Education'),
+            title: asText(documentSnapshot.data().title),
+            description: asText(documentSnapshot.data().description),
+            targetValue: Number(documentSnapshot.data().targetValue ?? 0),
+            unit: asText(documentSnapshot.data().unit || 'days'),
             active: documentSnapshot.data().active !== false,
             ...documentSnapshot.data(),
-          }) as EducationRecord)
-          .sort((a, b) => a.topic.localeCompare(b.topic));
+          }) as ProgressRecord)
+          .sort((a, b) => a.title.localeCompare(b.title));
 
-        setTopics(loadedTopics);
+        setItems(loadedItems);
         setLoading(false);
         setError('');
       },
       (snapshotError) => {
-        console.error('Failed to load education topics', snapshotError);
-        setError('Could not load education topics from Firestore. Check admin permissions and rules for education.');
+        console.error('Failed to load progress items', snapshotError);
+        setError('Could not load progress data from Firestore. Check admin permissions and rules for progress.');
         setLoading(false);
       }
     );
@@ -77,34 +82,34 @@ export default function AdminEducationPage() {
     return () => unsubscribe();
   }, []);
 
-  const filteredTopics = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     if (!query) {
-      return topics;
+      return items;
     }
 
-    return topics.filter((topic) => {
-      return [topic.topic, topic.shortDescription, topic.keyPoints, topic.category]
+    return items.filter((item) => {
+      return [item.title, item.description, item.unit]
         .map((value) => asText(value).toLowerCase())
         .some((value) => value.includes(query));
     });
-  }, [topics, search]);
+  }, [items, search]);
 
   const openCreateModal = () => {
-    setEditingTopic(null);
+    setEditingItem(null);
     setForm(defaultFormState);
     setIsModalOpen(true);
   };
 
-  const openEditModal = (topic: EducationRecord) => {
-    setEditingTopic(topic);
+  const openEditModal = (item: ProgressRecord) => {
+    setEditingItem(item);
     setForm({
-      topic: asText(topic.topic),
-      shortDescription: asText(topic.shortDescription),
-      keyPoints: asText(topic.keyPoints),
-      category: asText(topic.category || 'Education'),
-      active: topic.active !== false,
+      title: asText(item.title),
+      description: asText(item.description),
+      targetValue: String(item.targetValue || 0),
+      unit: asText(item.unit || 'days'),
+      active: item.active !== false,
     });
     setIsModalOpen(true);
   };
@@ -115,29 +120,29 @@ export default function AdminEducationPage() {
     }
 
     setIsModalOpen(false);
-    setEditingTopic(null);
+    setEditingItem(null);
     setForm(defaultFormState);
   };
 
-  const handleSaveTopic = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError('');
 
     try {
       const payload = {
-        topic: form.topic.trim(),
-        shortDescription: form.shortDescription.trim(),
-        keyPoints: form.keyPoints.trim(),
-        category: form.category.trim() || 'Education',
+        title: form.title.trim(),
+        description: form.description.trim(),
+        targetValue: toNumber(form.targetValue, 0),
+        unit: form.unit.trim() || 'days',
         active: form.active,
         updatedAt: serverTimestamp(),
       };
 
-      if (editingTopic) {
-        await updateDoc(doc(db, 'education', editingTopic.id), payload);
+      if (editingItem) {
+        await updateDoc(doc(db, 'progress', editingItem.id), payload);
       } else {
-        await addDoc(collection(db, 'education'), {
+        await addDoc(collection(db, 'progress'), {
           ...payload,
           createdAt: serverTimestamp(),
         });
@@ -145,27 +150,27 @@ export default function AdminEducationPage() {
 
       closeModal(true);
     } catch (saveError) {
-      console.error('Failed to save education topic', saveError);
-      setError('Could not save this topic. Check Firestore rules for education create and update.');
+      console.error('Failed to save progress item', saveError);
+      setError('Could not save this progress item. Check Firestore rules for progress create and update.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteTopic = async (topic: EducationRecord) => {
-    const confirmed = window.confirm(`Delete topic "${topic.topic}"?`);
+  const handleDelete = async (item: ProgressRecord) => {
+    const confirmed = window.confirm(`Delete progress item "${item.title}"?`);
     if (!confirmed) {
       return;
     }
 
-    setDeletingId(topic.id);
+    setDeletingId(item.id);
     setError('');
 
     try {
-      await deleteDoc(doc(db, 'education', topic.id));
+      await deleteDoc(doc(db, 'progress', item.id));
     } catch (deleteError) {
-      console.error('Failed to delete education topic', deleteError);
-      setError('Could not delete this topic. Check Firestore rules for education delete access.');
+      console.error('Failed to delete progress item', deleteError);
+      setError('Could not delete this progress item. Check Firestore rules for progress delete access.');
     } finally {
       setDeletingId(null);
     }
@@ -175,12 +180,12 @@ export default function AdminEducationPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Health Education Management</h1>
-          <p className="mt-2 text-slate-600">Add, edit, and delete education topics shown in the employee app.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Progress Management</h1>
+          <p className="mt-2 text-slate-600">Add, edit, and delete progress goals shown in the employee app.</p>
         </div>
         <Button type="button" onClick={openCreateModal} className="inline-flex items-center gap-2">
           <Plus className="h-4 w-4" />
-          Add Topic
+          Add Goal
         </Button>
       </div>
 
@@ -189,7 +194,7 @@ export default function AdminEducationPage() {
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by topic, category, description, or key points..."
+          placeholder="Search by title, unit, or description..."
           className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
         />
       </div>
@@ -208,30 +213,30 @@ export default function AdminEducationPage() {
 
       <Card className="p-0">
         {loading ? (
-          <div className="px-6 py-8 text-sm text-slate-600">Loading topics...</div>
-        ) : filteredTopics.length > 0 ? (
+          <div className="px-6 py-8 text-sm text-slate-600">Loading progress goals...</div>
+        ) : filteredItems.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Topic</th>
-                  <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Category</th>
+                  <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Goal</th>
+                  <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Target</th>
                   <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Description</th>
                   <th scope="col" className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
                   <th scope="col" className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {filteredTopics.map((topic) => (
-                  <tr key={topic.id}>
-                    <td className="max-w-[16rem] px-5 py-3 font-semibold text-slate-900">{topic.topic || 'Untitled topic'}</td>
-                    <td className="px-5 py-3 text-slate-700">{topic.category || 'Education'}</td>
-                    <td className="max-w-[28rem] px-5 py-3 text-slate-700">
-                      <p className="truncate">{topic.shortDescription || 'No description'}</p>
+                {filteredItems.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-5 py-3 font-semibold text-slate-900">{item.title || 'Untitled goal'}</td>
+                    <td className="px-5 py-3 text-slate-700">{item.targetValue || 0} {item.unit || 'days'}</td>
+                    <td className="max-w-[30rem] px-5 py-3 text-slate-700">
+                      <p className="truncate">{item.description || 'No description'}</p>
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${topic.active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {topic.active !== false ? 'Active' : 'Inactive'}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                        {item.active !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -240,7 +245,7 @@ export default function AdminEducationPage() {
                           type="button"
                           variant="secondary"
                           size="sm"
-                          onClick={() => openEditModal(topic)}
+                          onClick={() => openEditModal(item)}
                           className="inline-flex items-center gap-1.5"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -250,12 +255,12 @@ export default function AdminEducationPage() {
                           type="button"
                           variant="danger"
                           size="sm"
-                          onClick={() => void handleDeleteTopic(topic)}
-                          disabled={deletingId === topic.id}
+                          onClick={() => void handleDelete(item)}
+                          disabled={deletingId === item.id}
                           className="inline-flex items-center gap-1.5"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          {deletingId === topic.id ? 'Deleting...' : 'Delete'}
+                          {deletingId === item.id ? 'Deleting...' : 'Delete'}
                         </Button>
                       </div>
                     </td>
@@ -265,7 +270,7 @@ export default function AdminEducationPage() {
             </table>
           </div>
         ) : (
-          <div className="px-6 py-8 text-sm text-slate-600">No education topics found.</div>
+          <div className="px-6 py-8 text-sm text-slate-600">No progress goals found.</div>
         )}
       </Card>
 
@@ -274,63 +279,63 @@ export default function AdminEducationPage() {
           <Card className="w-full max-w-2xl border border-slate-200 bg-white p-0 shadow-xl">
             <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">{editingTopic ? 'Edit Topic' : 'Add Topic'}</h2>
+                <h2 className="text-xl font-bold text-slate-900">{editingItem ? 'Edit Goal' : 'Add Goal'}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {editingTopic ? 'Update selected topic details.' : 'Create a new education topic for the employee app.'}
+                  {editingItem ? 'Update selected progress goal.' : 'Create a new progress goal for employees.'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => closeModal()}
                 className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-                aria-label="Close education modal"
+                aria-label="Close progress modal"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={(event) => void handleSaveTopic(event)} className="space-y-4 px-6 py-5">
+            <form onSubmit={(event) => void handleSave(event)} className="space-y-4 px-6 py-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5 md:col-span-2">
-                  <span className="text-sm font-medium text-slate-700">Topic</span>
+                  <span className="text-sm font-medium text-slate-700">Goal Title</span>
                   <input
-                    value={form.topic}
-                    onChange={(event) => setForm((current) => ({ ...current, topic: event.target.value }))}
-                    placeholder="Topic title"
+                    value={form.title}
+                    onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="Example: Keep a 30-day streak"
                     required
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
 
                 <label className="space-y-1.5 md:col-span-2">
-                  <span className="text-sm font-medium text-slate-700">Short Description</span>
+                  <span className="text-sm font-medium text-slate-700">Description</span>
                   <textarea
-                    value={form.shortDescription}
-                    onChange={(event) => setForm((current) => ({ ...current, shortDescription: event.target.value }))}
-                    placeholder="Short summary shown on cards"
-                    rows={3}
-                    required
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
-
-                <label className="space-y-1.5 md:col-span-2">
-                  <span className="text-sm font-medium text-slate-700">Key Points</span>
-                  <textarea
-                    value={form.keyPoints}
-                    onChange={(event) => setForm((current) => ({ ...current, keyPoints: event.target.value }))}
-                    placeholder="Detailed points for the popup"
+                    value={form.description}
+                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                    placeholder="Explain what this goal means"
                     rows={4}
+                    required
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
 
                 <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-slate-700">Category</span>
+                  <span className="text-sm font-medium text-slate-700">Target Value</span>
                   <input
-                    value={form.category}
-                    onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                    placeholder="Education"
+                    type="number"
+                    min={1}
+                    value={form.targetValue}
+                    onChange={(event) => setForm((current) => ({ ...current, targetValue: event.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-slate-700">Unit</span>
+                  <input
+                    value={form.unit}
+                    onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
+                    placeholder="days"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
@@ -343,7 +348,7 @@ export default function AdminEducationPage() {
                   onChange={(event) => setForm((current) => ({ ...current, active: event.target.checked }))}
                   className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                 />
-                Active topic
+                Active goal
               </label>
 
               <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
@@ -351,7 +356,7 @@ export default function AdminEducationPage() {
                   Cancel
                 </Button>
                 <Button type="submit" isLoading={saving}>
-                  {editingTopic ? 'Save Changes' : 'Create Topic'}
+                  {editingItem ? 'Save Changes' : 'Create Goal'}
                 </Button>
               </div>
             </form>

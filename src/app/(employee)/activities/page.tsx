@@ -1,178 +1,204 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { Lottie } from 'lottie-react';
 import Card from '@/components/common/Card';
-import Button from '@/components/common/Button';
-import { Icon } from '@/components/common/Icon';
-import { mockActivities } from '@/lib/mockData';
-import type { ActivityCategory } from '@/lib/types';
+import { AlertCircle, CheckCircle2, MoreHorizontal, X } from 'lucide-react';
+import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
+import { db } from '@/lib/firebase';
+
+type ActivityRecord = {
+  id: string;
+  title: string;
+  description: string;
+  category?: string;
+  durationMinutes?: number;
+  difficulty?: string;
+  animationKey?: string;
+  active?: boolean;
+};
+
+const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
+
+const resolveActivityAnimation = (activity: ActivityRecord) => {
+  const title = activity.title.trim().toLowerCase();
+  const animationKey = activity.animationKey?.trim().toLowerCase();
+
+  if (
+    animationKey === WALKING_OFFICE_ANIMATION_KEY ||
+    title === 'walk around the office'
+  ) {
+    return walkingOfficeManAnimation;
+  }
+
+  return null;
+};
 
 /**
  * Activities Page
- * Displays activity categories and allows filtering with Lucide icons
- * Each activity shows duration, difficulty, and calories burned
+ * Displays the approved office wellness activities and descriptions.
  */
 export default function ActivitiesPage() {
-  const [selectedCategory, setSelectedCategory] = useState<
-    ActivityCategory | 'all'
-  >('all');
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Filter activities by category
-  const filteredActivities = useMemo(() => {
-    if (selectedCategory === 'all') return mockActivities;
-    return mockActivities.filter((a) => a.category === selectedCategory);
-  }, [selectedCategory]);
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'activities'),
+      (snapshot) => {
+        const loadedActivities = snapshot.docs
+          .map((documentSnapshot) => ({
+            id: documentSnapshot.id,
+            title: String(documentSnapshot.data().title ?? '').trim(),
+            description: String(documentSnapshot.data().description ?? '').trim(),
+            category: String(documentSnapshot.data().category ?? '').trim(),
+            durationMinutes: Number(documentSnapshot.data().durationMinutes ?? 0),
+            difficulty: String(documentSnapshot.data().difficulty ?? '').trim(),
+            animationKey: String(documentSnapshot.data().animationKey ?? '').trim(),
+            active: documentSnapshot.data().active !== false,
+          }))
+          .filter((activity) => activity.active !== false)
+          .sort((a, b) => a.title.localeCompare(b.title));
 
-  // Category definitions with colors
-  const categories = [
-    { id: 'Stretching', label: 'Stretching', color: 'purple' as const, icon: 'Yoga' },
-    { id: 'Walking', label: 'Walking', color: 'blue' as const, icon: 'Footprints' },
-    { id: 'Aerobic', label: 'Aerobic', color: 'red' as const, icon: 'Music' },
-    { id: 'Strengthening', label: 'Strengthening', color: 'green' as const, icon: 'Zap' },
-    {
-      id: 'Desk exercises',
-      label: 'Desk Exercises',
-      color: 'orange' as const,
-      icon: 'Monitor',
-    },
-  ];
+        setActivities(loadedActivities);
+        setSelectedActivity((current) => {
+          if (!current) {
+            return current;
+          }
 
-  const colorMap = {
-    purple: 'bg-purple-50 border-purple-200',
-    blue: 'bg-blue-50 border-blue-200',
-    red: 'bg-red-50 border-red-200',
-    green: 'bg-green-50 border-green-200',
-    orange: 'bg-orange-50 border-orange-200',
-  };
+          return loadedActivities.find((activity) => activity.id === current.id) ?? null;
+        });
+        setLoading(false);
+        setError('');
+      },
+      (snapshotError) => {
+        console.error('Failed to load activities', snapshotError);
+        setError('Could not load activities from Firestore right now.');
+        setLoading(false);
+      }
+    );
 
-  const difficultyColor: Record<string, string> = {
-    Easy: 'text-emerald-600 bg-emerald-50',
-    Medium: 'text-amber-600 bg-amber-50',
-    Hard: 'text-red-600 bg-red-50',
-  };
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Wellness Activities</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Activities</h1>
         <p className="mt-2 text-slate-600">
-          Choose an activity to get started with your wellness journey
+          Approved workplace wellness activities and descriptions.
         </p>
       </div>
 
-      {/* Category Filter */}
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">
-          Filter by Category
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`rounded-full px-4 py-2 font-medium transition-colors ${
-              selectedCategory === 'all'
-                ? 'bg-teal-600 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
+      {error ? (
+        <Card className="border border-amber-200 bg-amber-50 text-amber-900">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div>
+              <p className="font-semibold">Activities could not be loaded</p>
+              <p className="mt-1 text-sm">{error}</p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4">
+        {loading ? (
+          <Card className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Loading activities...</p>
+          </Card>
+        ) : activities.length > 0 ? (
+          activities.map((activity, index) => {
+            const activityAnimation = resolveActivityAnimation(activity);
+
+            return (
+          <Card
+            key={activity.id}
+            className="relative rounded-xl border border-slate-100 bg-slate-50 p-4"
           >
-            All Activities
-          </button>
-          {categories.map((cat) => (
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id as ActivityCategory)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 font-medium transition-colors ${
-                selectedCategory === cat.id
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              type="button"
+              onClick={() => setSelectedActivity(activity)}
+              className="absolute right-3 top-3 rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              aria-label={`Open details for ${activity.title}`}
             >
-              <Icon 
-                name={cat.icon} 
-                className={`h-4 w-4 ${selectedCategory === cat.id ? 'text-white' : 'text-slate-600'}`}
-                size={16}
-              />
-              {cat.label}
+              <MoreHorizontal className="h-5 w-5" />
             </button>
-          ))}
-        </div>
-      </div>
 
-      {/* Activities Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredActivities.map((activity) => {
-          const category = categories.find((c) => c.id === activity.category);
-          const colorClass = colorMap[category?.color as keyof typeof colorMap];
-
-          return (
-            <Card
-              key={activity.activityId}
-              className={`flex flex-col border ${colorClass} transition-transform hover:shadow-md hover:ring-2 hover:ring-teal-400`}
+            <div
+              className={activityAnimation
+                ? 'flex items-start justify-between gap-3'
+                : 'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'}
             >
-              {/* Activity Header */}
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-bold text-slate-900">
-                    {activity.title}
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {activity.description}
-                  </p>
+              {activityAnimation ? (
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm sm:h-28 sm:w-28">
+                  <Lottie
+                    src={activityAnimation}
+                    loop
+                    autoplay
+                    className="h-20 w-20 sm:h-24 sm:w-24"
+                  />
                 </div>
-                <div className="ml-2 text-slate-600">
-                  <Icon name={category?.icon || 'Activity'} size={32} className="h-8 w-8" />
+              ) : null}
+
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 text-teal-600" />
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-slate-900">
+                    {index + 1}. {activity.title}
+                  </h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    {activity.category ? <span>{activity.category}</span> : null}
+                    {activity.durationMinutes ? <span>• {activity.durationMinutes} mins</span> : null}
+                    {activity.difficulty ? <span>• {activity.difficulty}</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
                 </div>
               </div>
 
-              {/* Activity Details */}
-              <div className="mb-4 grid grid-cols-3 gap-2 border-t border-current border-opacity-20 pt-4 text-xs">
-                <div>
-                  <p className="font-medium text-slate-600">Duration</p>
-                  <p className="font-bold text-slate-900">
-                    {activity.durationMinutes}min
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium text-slate-600">Difficulty</p>
-                  <p
-                    className={`rounded-full px-2 py-1 text-center font-bold ${
-                      difficultyColor[activity.difficulty] || 'text-slate-600 bg-slate-50'
-                    }`}
-                  >
-                    {activity.difficulty}
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium text-slate-600">Calories</p>
-                  <p className="font-bold text-slate-900">
-                    {activity.caloriesBurned}
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <Button
-                variant="primary"
-                size="sm"
-                className="mt-auto w-full"
-                onClick={() => {
-                  // Navigate to activity detail page
-                  window.location.href = `/activities/${activity.activityId}`;
-                }}
-              >
-                View Activity
-              </Button>
-            </Card>
-          );
-        })}
+            </div>
+          </Card>
+            );
+          })
+        ) : (
+          <Card className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">No activities available yet.</p>
+          </Card>
+        )}
       </div>
 
-      {filteredActivities.length === 0 && (
-        <div className="rounded-lg bg-slate-50 p-8 text-center">
-          <p className="text-slate-600">
-            No activities found in this category. Try selecting a different
-            filter.
-          </p>
+      {selectedActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">
+                  Activity Details
+                </p>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">
+                  {selectedActivity.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedActivity(null)}
+                className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close details"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl bg-slate-50 p-5">
+              <p className="text-sm font-semibold text-slate-900">Full Description</p>
+              <p className="mt-3 text-sm leading-7 text-slate-700">
+                {selectedActivity.description}
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
