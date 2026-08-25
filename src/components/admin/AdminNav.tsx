@@ -9,7 +9,6 @@ import {
   UserCog,
   Target,
   BookOpen,
-  Goal,
   TrendingUp,
   MessageSquare,
   LogOut,
@@ -35,7 +34,6 @@ export default function AdminNav() {
     { label: 'Participation', href: '/admin/participation', Icon: Users },
     { label: 'Activities', href: '/admin/activities', Icon: Target },
     { label: 'Education', href: '/admin/education', Icon: BookOpen },
-    { label: 'Progress', href: '/admin/progress', Icon: Goal },
     { label: 'Reports', href: '/admin/reports', Icon: TrendingUp },
     { label: 'Feedback', href: '/admin/feedback', Icon: MessageSquare },
   ];

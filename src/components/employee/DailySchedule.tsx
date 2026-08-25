@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Lottie } from 'lottie-react';
 import { CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { Icon } from '@/components/common/Icon';
 import Card from '@/components/common/Card';
 import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { mockActivities } from '@/lib/mockData';
 
 interface ScheduleItem {
@@ -44,7 +44,14 @@ type PersistedDailyPlan = {
   completedIds: string[];
 };
 
+type DailyProgressDocument = PersistedDailyPlan & {
+  userId: string;
+  activities: ScheduleItem[];
+  startedIds: string[];
+};
+
 const DAILY_PLAN_STORAGE_KEY = 'wellness-daily-plan-v1';
+const DAILY_PROGRESS_COLLECTION = 'dailyProgress';
 const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
 const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
 const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
@@ -164,6 +171,7 @@ const formatSeconds = (totalSeconds: number) => {
 export default function DailySchedule({ items = [], onProgressChange }: DailyScheduleProps) {
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(items.slice(0, 3));
   const [completedIds, setCompletedIds] = useState<string[]>([]);
+  const [startedIds, setStartedIds] = useState<string[]>([]);
   const [selectedItem, setSelectedItem] = useState<ScheduleItem | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -189,25 +197,44 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     icon: String(activity.icon || ''),
   }));
 
-  const applyDailyPlan = (sourceActivities: ScheduleSourceActivity[]) => {
+  const applyDailyPlan = async (sourceActivities: ScheduleSourceActivity[]) => {
     const todayKey = getLocalDateKey();
     setActiveDateKey(todayKey);
 
     if (sourceActivities.length === 0) {
       setScheduleItems([]);
       setCompletedIds([]);
+      setStartedIds([]);
       setIsLoading(false);
       return;
     }
 
     const persisted = readPersistedPlan();
+    const userId = auth.currentUser?.uid;
+    const progressReference = userId ? doc(db, DAILY_PROGRESS_COLLECTION, `${userId}_${todayKey}`) : null;
+    let remoteProgress: DailyProgressDocument | null = null;
+    if (progressReference) {
+      try {
+        const remoteSnapshot = await getDoc(progressReference);
+        remoteProgress = remoteSnapshot.exists() ? remoteSnapshot.data() as DailyProgressDocument : null;
+      } catch (progressError) {
+        console.error('Failed to load saved daily progress; using local schedule state.', progressError);
+      }
+    }
     const canReusePersisted =
+      remoteProgress?.dateKey === todayKey &&
+      remoteProgress.activities?.length > 0 &&
+      remoteProgress.activities.every((activity) => sourceActivities.some((source) => source.id === activity.id));
+    const canReuseLocal =
+      !remoteProgress &&
       persisted?.dateKey === todayKey &&
       persisted.ids.every((id) => sourceActivities.some((activity) => activity.id === id));
 
     const dailyIds = canReusePersisted
-      ? (persisted?.ids ?? [])
-      : shuffle(sourceActivities.map((activity) => activity.id)).slice(0, Math.min(3, sourceActivities.length));
+      ? (remoteProgress?.ids ?? [])
+      : canReuseLocal
+        ? (persisted?.ids ?? [])
+        : shuffle(sourceActivities.map((activity) => activity.id)).slice(0, Math.min(3, sourceActivities.length));
 
     const dailyActivities = dailyIds
       .map((id, index) => {
@@ -230,15 +257,34 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
       })
       .filter((activity): activity is ScheduleItem => Boolean(activity));
 
-    const safeCompleted = (canReusePersisted ? persisted?.completedIds ?? [] : []).filter((id) => dailyActivities.some((activity) => activity.id === id));
+    const safeCompleted = (canReusePersisted ? remoteProgress?.completedIds ?? [] : canReuseLocal ? persisted?.completedIds ?? [] : [])
+      .filter((id) => dailyActivities.some((activity) => activity.id === id));
+    const safeStarted = (canReusePersisted ? remoteProgress?.startedIds ?? [] : [])
+      .filter((id) => dailyActivities.some((activity) => activity.id === id));
 
     setScheduleItems(dailyActivities);
     setCompletedIds(safeCompleted);
+    setStartedIds(safeStarted);
     writePersistedPlan({
       dateKey: todayKey,
       ids: dailyActivities.map((activity) => activity.id),
       completedIds: safeCompleted,
     });
+    if (progressReference && (!remoteProgress || !canReusePersisted)) {
+      try {
+        await setDoc(progressReference, {
+          userId,
+          dateKey: todayKey,
+          ids: dailyActivities.map((activity) => activity.id),
+          activities: dailyActivities,
+          startedIds: safeStarted,
+          completedIds: safeCompleted,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } catch (progressError) {
+        console.error('Failed to save daily schedule; local state will continue to work.', progressError);
+      }
+    }
     setIsLoading(false);
   };
 
@@ -265,7 +311,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
           ? allActivities
           : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
 
-        applyDailyPlan(source);
+        void applyDailyPlan(source);
       },
       (error) => {
         console.error('Failed to load schedule activities', error);
@@ -284,7 +330,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
           ? fromPropItems
           : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
 
-        applyDailyPlan(source);
+        void applyDailyPlan(source);
       }
     );
 
@@ -326,7 +372,21 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     });
 
     onProgressChange?.(completedIds.length, scheduleItems.length);
-  }, [activeDateKey, completedIds, onProgressChange, scheduleItems]);
+    const userId = auth.currentUser?.uid;
+    if (userId && scheduleItems.length > 0) {
+      void setDoc(doc(db, DAILY_PROGRESS_COLLECTION, `${userId}_${activeDateKey}`), {
+        userId,
+        dateKey: activeDateKey,
+        ids: scheduleItems.map((item) => item.id),
+        activities: scheduleItems,
+        startedIds,
+        completedIds,
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).catch((progressError) => {
+        console.error('Failed to sync daily progress; local state is preserved.', progressError);
+      });
+    }
+  }, [activeDateKey, completedIds, onProgressChange, scheduleItems, startedIds]);
 
   useEffect(() => {
     if (isLoading || scheduleItems.length > 0) {
@@ -358,6 +418,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
 
     setActiveDateKey(todayKey);
     setScheduleItems(emergencySchedule);
+    setStartedIds([]);
     setCompletedIds([]);
     writePersistedPlan({
       dateKey: todayKey,
@@ -372,6 +433,10 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     setSelectedItem(item);
     setSecondsRemaining(item.duration * 60);
     setIsTimerRunning(false);
+  };
+
+  const markStarted = (itemId: string) => {
+    setStartedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
   };
 
   const closeModal = () => {
@@ -447,7 +512,10 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
 
             {resolveActivityAnimation(selectedItem) ? (
               <div className="mt-4 flex justify-center rounded-2xl bg-slate-50 py-3">
-                <Lottie src={resolveActivityAnimation(selectedItem)} loop autoplay className="h-24 w-24" />
+                {(() => {
+                  const animation = resolveActivityAnimation(selectedItem);
+                  return animation ? <Lottie src={animation} loop autoplay className="h-24 w-24" /> : null;
+                })()}
               </div>
             ) : null}
 
@@ -468,6 +536,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
                 <button
                   type="button"
                   onClick={() => setIsTimerRunning((current) => !current)}
+                  onMouseDown={() => markStarted(selectedItem.id)}
                   className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white"
                 >
                   {isTimerRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -487,6 +556,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
                 <button
                   type="button"
                   onClick={() => markComplete(selectedItem.id)}
+                  onMouseDown={() => markStarted(selectedItem.id)}
                   className="rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700"
                 >
                   Mark Complete

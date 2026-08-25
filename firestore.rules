@@ -45,6 +45,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Daily employee schedule and progress snapshots.
+    match /dailyProgress/{progressId} {
+      allow read: if signedIn()
+        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if signedIn()
+        && (request.auth.uid == request.resource.data.userId || isAdmin());
+      allow update: if signedIn()
+        && (request.auth.uid == resource.data.userId || isAdmin())
+        && (request.auth.uid == request.resource.data.userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
     // Default deny for everything else.
     match /{document=**} {
       allow read, write: if false;

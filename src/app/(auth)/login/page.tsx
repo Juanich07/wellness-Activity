@@ -4,11 +4,6 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-const ADMIN_UIDS = new Set([
-  '5rzSFrBCVZWQgEBad1sih9Qk7rFm2',
-  'jmB6wZp6nLdEAr47h4td',
-]);
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -22,22 +17,22 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const [{ getIdTokenResult, signInWithEmailAndPassword }, { auth }] = await Promise.all([
+      const [{ signInWithEmailAndPassword, signOut }, { auth }] = await Promise.all([
         import('firebase/auth'),
         import('@/lib/firebase'),
       ]);
 
-      const credentials = await signInWithEmailAndPassword(auth, email, password);
-      const tokenResult = await getIdTokenResult(credentials.user, true);
-      const token = await credentials.user.getIdToken();
-      let isAdmin = ADMIN_UIDS.has(credentials.user.uid);
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
 
-      const role = isAdmin ? 'admin' : (tokenResult.claims.role as string | undefined) || 'employee';
+      const credentials = await signInWithEmailAndPassword(auth, email, password);
+      const token = await credentials.user.getIdToken();
       const cookieValue = `token=${token}; path=/; max-age=3600; samesite=lax`;
 
       document.cookie = cookieValue;
-      document.cookie = `role=${role}; path=/; max-age=3600; samesite=lax`;
-      router.replace(role === 'admin' ? '/admin/dashboard' : '/dashboard');
+      document.cookie = 'role=employee; path=/; max-age=3600; samesite=lax';
+      router.replace('/dashboard');
     } catch (signInError) {
       const firebaseError = signInError as { code?: string; message?: string };
       const message = firebaseError.code

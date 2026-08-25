@@ -1,10 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
   BookOpen,
-  LineChart,
+  LineChart as LineChartIcon,
   MessageSquare,
   Goal,
   Target,
@@ -12,18 +13,47 @@ import {
   UserCog,
   ShieldCheck,
 } from 'lucide-react';
+import { collection, getDocs } from 'firebase/firestore';
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import Card from '@/components/common/Card';
 import ProgressRing from '@/components/common/ProgressRing';
-import {
-  mockDashboardStats,
-} from '@/lib/mockData';
+import { db } from '@/lib/firebase';
+import { asDailyProgressRecord, getLastSevenDateKeys, getLocalDateKey, DailyProgressRecord } from '@/lib/dailyProgress';
 
 /**
  * Admin Dashboard Page
  * Entry point for admin management and reporting.
  */
 export default function AdminDashboard() {
-  const stats = mockDashboardStats;
+  const [users, setUsers] = useState<Record<string, unknown>[]>([]);
+  const [progress, setProgress] = useState<DailyProgressRecord[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [userSnapshot, progressSnapshot] = await Promise.all([
+          getDocs(collection(db, 'user')),
+          getDocs(collection(db, 'dailyProgress')),
+        ]);
+        setUsers(userSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setProgress(progressSnapshot.docs.map((item) => asDailyProgressRecord(item.id, item.data())));
+      } catch (loadError) {
+        console.error('Failed to load dashboard metrics', loadError);
+      }
+    };
+    void load();
+  }, []);
+
+  const todayKey = getLocalDateKey();
+  const todayProgress = progress.filter((item) => item.dateKey === todayKey);
+  const totalEmployees = users.filter((user) => user.role !== 'admin').length;
+  const assignedEmployees = users.filter((user) => user.role !== 'admin' && user.active !== false && (user.assigned !== false || Array.isArray(user.assignedActivities))).length;
+  const participatingUsers = new Set(todayProgress.filter((item) => item.startedIds.length > 0).map((item) => item.userId)).size;
+  const completedThree = new Set(todayProgress.filter((item) => item.completedIds.length >= 3).map((item) => item.userId)).size;
+  const trend = getLastSevenDateKeys().map((dateKey) => ({
+    day: dateKey.slice(5),
+    participation: new Set(progress.filter((item) => item.dateKey === dateKey && item.startedIds.length > 0).map((item) => item.userId)).size,
+  }));
 
   const adminCards = [
     {
@@ -60,7 +90,7 @@ export default function AdminDashboard() {
       href: '/admin/reports',
       title: 'Participation Statistics',
       description: 'Open admin reports for participation and engagement trends.',
-      Icon: LineChart,
+      Icon: LineChartIcon,
     },
     {
       href: '/admin/feedback',
@@ -88,31 +118,31 @@ export default function AdminDashboard() {
           <div className="text-center">
             <p className="text-sm font-medium text-slate-600">Total Employees</p>
             <p className="mt-3 text-4xl font-bold text-teal-600">
-              {stats.totalEmployees}
+              {assignedEmployees}/{totalEmployees}
             </p>
-            <p className="mt-2 text-xs text-slate-500">Active in system</p>
+            <p className="mt-2 text-xs text-slate-500">Assigned / total employees</p>
           </div>
         </Card>
 
         <Card className="min-w-[12rem] flex flex-shrink-0 flex-col items-center justify-center md:min-w-0 md:flex-shrink md:grow">
           <ProgressRing
-            percentage={Math.round(stats.participationRate)}
+            percentage={totalEmployees ? Math.round((participatingUsers / totalEmployees) * 100) : 0}
             label="Participation"
             size="sm"
             color="emerald"
           />
           <p className="mt-3 text-xs text-slate-500 text-center">
-            Of employees engaging
+            {participatingUsers} users started an activity today
           </p>
         </Card>
 
         <Card className="min-w-[12rem] flex-shrink-0 md:min-w-0 md:flex-shrink md:grow">
           <div className="text-center">
-            <p className="text-sm font-medium text-slate-600">Active Streaks</p>
+            <p className="text-sm font-medium text-slate-600">3+ Activities Completed</p>
             <p className="mt-3 text-4xl font-bold text-emerald-500">
-              {stats.activeStreaks}
+              {completedThree}
             </p>
-            <p className="mt-2 text-xs text-slate-500">Employees with streaks</p>
+            <p className="mt-2 text-xs text-slate-500">Users completed at least three today</p>
           </div>
         </Card>
 
@@ -120,7 +150,7 @@ export default function AdminDashboard() {
           <div className="text-center">
             <p className="text-sm font-medium text-slate-600">Breaks Completed</p>
             <p className="mt-3 text-4xl font-bold text-blue-600">
-              {stats.completedBreaksToday}
+              {completedThree}
             </p>
             <p className="mt-2 text-xs text-slate-500">Today</p>
           </div>
@@ -153,30 +183,15 @@ export default function AdminDashboard() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card title="Participation Trend (Last 7 Days)">
-          <div className="h-64 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <p className="text-5xl mb-2">📈</p>
-              <p className="text-sm text-slate-600">
-                Line chart visualization
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Recommend: Recharts or Chart.js
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card title="Activity Distribution">
-          <div className="h-64 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <p className="text-5xl mb-2">🥧</p>
-              <p className="text-sm text-slate-600">
-                Pie chart visualization
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Shows breakdown by activity type
-              </p>
-            </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="participation" stroke="#0d9488" strokeWidth={3} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </Card>
       </div>

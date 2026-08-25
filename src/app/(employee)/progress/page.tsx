@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { AlertCircle, Target } from 'lucide-react';
 import Card from '@/components/common/Card';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { asDailyProgressRecord, DailyProgressRecord, getWeekDateKeys } from '@/lib/dailyProgress';
 
 type ProgressRecord = {
   id: string;
@@ -19,8 +20,26 @@ export default function ProgressPage() {
   const [goals, setGoals] = useState<ProgressRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dailyRecords, setDailyRecords] = useState<DailyProgressRecord[]>([]);
 
   useEffect(() => {
+    const loadDailyProgress = async () => {
+      if (!auth.currentUser) {
+        return;
+      }
+
+      try {
+        const snapshot = await getDocs(query(collection(db, 'dailyProgress'), where('userId', '==', auth.currentUser.uid)));
+        setDailyRecords(snapshot.docs
+          .map((documentSnapshot) => asDailyProgressRecord(documentSnapshot.id, documentSnapshot.data()))
+          .filter((record) => record.userId === auth.currentUser?.uid));
+      } catch (progressError) {
+        console.error('Failed to load daily progress', progressError);
+      }
+    };
+
+    void loadDailyProgress();
+
     const unsubscribe = onSnapshot(
       collection(db, 'progress'),
       (snapshot) => {
@@ -50,6 +69,8 @@ export default function ProgressPage() {
     return () => unsubscribe();
   }, []);
 
+  const week = getWeekDateKeys();
+
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -68,6 +89,17 @@ export default function ProgressPage() {
           </div>
         </Card>
       ) : null}
+
+      <Card title="This Week (Monday - Sunday)">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {week.map((dateKey) => {
+            const record = dailyRecords.find((item) => item.dateKey === dateKey);
+            const percentage = record?.ids.length ? Math.round((record.completedIds.length / record.ids.length) * 100) : 0;
+            const dayLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+            return <div key={dateKey} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xs font-semibold text-slate-500">{dayLabel}</p><p className="mt-2 text-2xl font-bold text-teal-600">{percentage}%</p><p className="mt-1 text-[11px] text-slate-500">{record?.completedIds.length ?? 0}/{record?.ids.length ?? 0} complete</p></div>;
+          })}
+        </div>
+      </Card>
 
       <div className="grid gap-4">
         {loading ? (
