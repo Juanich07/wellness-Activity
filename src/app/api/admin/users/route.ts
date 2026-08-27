@@ -13,7 +13,7 @@ function normalizeString(value: unknown) {
 }
 
 async function firestoreWrite(path: string, data: Record<string, any>) {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
   if (!projectId || !apiKey) {
@@ -51,7 +51,7 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
 }
 
 async function firestoreDelete(path: string) {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
   if (!projectId || !apiKey) {
@@ -69,7 +69,7 @@ async function firestoreDelete(path: string) {
 }
 
 async function firestoreQuery(collectionPath: string) {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
   if (!projectId || !apiKey) {
