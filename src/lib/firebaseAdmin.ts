@@ -1,6 +1,3 @@
-import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
@@ -10,10 +7,12 @@ type ServiceAccountShape = {
   private_key: string;
 };
 
+type App = any;
+
 let adminApp: App | null = null;
 let initError: Error | null = null;
-let authInstance: ReturnType<typeof getAuth> | null = null;
-let dbInstance: ReturnType<typeof getFirestore> | null = null;
+let authInstance: any = null;
+let dbInstance: any = null;
 
 function parseServiceAccount(): ServiceAccountShape {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -65,12 +64,16 @@ function parseServiceAccount(): ServiceAccountShape {
   };
 }
 
-function initializeAdmin(): void {
+async function initializeAdmin(): Promise<void> {
   if (adminApp || initError) {
     return;
   }
 
   try {
+    const { getApps, initializeApp, cert } = await import('firebase-admin/app');
+    const { getAuth } = await import('firebase-admin/auth');
+    const { getFirestore } = await import('firebase-admin/firestore');
+
     if (getApps().length === 0) {
       const serviceAccount = parseServiceAccount();
 
@@ -94,16 +97,16 @@ function initializeAdmin(): void {
   }
 }
 
-export function getAdminAuth(): ReturnType<typeof getAuth> {
-  initializeAdmin();
+export async function getAdminAuth() {
+  await initializeAdmin();
   if (!authInstance) {
     throw new Error('Firebase Admin Auth not initialized');
   }
   return authInstance;
 }
 
-export function getAdminDb(): ReturnType<typeof getFirestore> {
-  initializeAdmin();
+export async function getAdminDb() {
+  await initializeAdmin();
   if (!dbInstance) {
     throw new Error('Firebase Admin Firestore not initialized');
   }

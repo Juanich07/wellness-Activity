@@ -30,8 +30,8 @@ async function getAdminClients(): Promise<{ adminAuth: Auth; adminDb: Firestore 
   try {
     const { getAdminAuth, getAdminDb } = await import('@/lib/firebaseAdmin');
     return {
-      adminAuth: getAdminAuth(),
-      adminDb: getAdminDb(),
+      adminAuth: await getAdminAuth(),
+      adminDb: await getAdminDb(),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Firebase Admin SDK initialization failed.';
