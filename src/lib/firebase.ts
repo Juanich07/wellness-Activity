@@ -1,6 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,15 +17,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase only once
-let app;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Auth and Firestore
+// Initialize Auth and Firestore with persistent local cache so data survives
+// page refreshes and brief connectivity drops without extra reads.
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+export const db: Firestore = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
 
 export default app;
