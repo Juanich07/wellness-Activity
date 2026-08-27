@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
+
+async function getFieldValue() {
+  const { FieldValue } = await import('firebase-admin/firestore');
+  return FieldValue;
+}
 
 type UserRole = 'admin' | 'employee';
 
@@ -77,6 +81,7 @@ async function upsertRoleDocuments(params: {
   setClaims?: boolean;
 }) {
   const { adminAuth, adminDb, uid, role, email, name, active, department, actorUid, setClaims = true } = params;
+  const FieldValue = await getFieldValue();
 
   await adminDb.collection('user').doc(uid).set(
     {
@@ -117,6 +122,7 @@ export async function POST(request: NextRequest) {
     const { adminAuth, adminDb } = await getAdminClients();
     const actorUid = await ensureAdminRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
+    const FieldValue = await getFieldValue();
 
     const uid = normalizeString(body.uid);
     const name = normalizeString(body.name);
