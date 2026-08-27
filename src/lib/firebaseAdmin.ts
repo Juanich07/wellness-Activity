@@ -65,7 +65,11 @@ function parseServiceAccount(): ServiceAccountShape {
 }
 
 async function initializeAdmin(): Promise<void> {
-  if (adminApp || initError) {
+  if (initError) {
+    throw initError;
+  }
+
+  if (adminApp) {
     return;
   }
 
