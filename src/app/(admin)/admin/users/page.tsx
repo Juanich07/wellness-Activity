@@ -2,15 +2,10 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import {
-  collection,
-  getDocs,
-} from 'firebase/firestore';
 import { AlertCircle, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import Button from '@/components/common/Button';
 import Card from '@/components/common/Card';
 import { auth } from '@/lib/firebase';
-import { db } from '@/lib/firebase';
 
 type UserRole = 'admin' | 'employee';
 
@@ -141,19 +136,31 @@ export default function AdminUsersPage() {
     setError('');
 
     try {
-      const snapshot = await getDocs(collection(db, 'user'));
-      const loadedUsers = snapshot.docs
-        .map((documentSnapshot) => ({
-          id: documentSnapshot.id,
-          ...documentSnapshot.data(),
-        }) as UserRecord)
-        .sort((a, b) => {
-          const aLabel = normalizeText(a.name || a.email || a.id).toLowerCase();
-          const bLabel = normalizeText(b.name || b.email || b.id).toLowerCase();
-          return aLabel.localeCompare(bLabel);
-        });
+      const token = await getAdminToken();
+      const response = await fetch('/api/admin/users', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      setUsers(loadedUsers);
+      if (!response.ok) {
+        const data = (await response.json()) as Record<string, unknown>;
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load users');
+      }
+
+      const loadedUsers = (await response.json()) as UserRecord[];
+      setUsers(
+        loadedUsers
+          .map((user) => ({
+            ...user,
+            id: typeof user.id === 'string' ? user.id : String(user.id ?? ''),
+          }))
+          .sort((a, b) => {
+            const aLabel = normalizeText(a.name || a.email || a.id).toLowerCase();
+            const bLabel = normalizeText(b.name || b.email || b.id).toLowerCase();
+            return aLabel.localeCompare(bLabel);
+          })
+      );
     } catch (loadError) {
       console.error('Failed to load users', loadError);
       setError('Could not load users from Firestore. Check admin permissions and rules for the user collection.');

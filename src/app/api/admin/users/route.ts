@@ -286,3 +286,23 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: message }, { status });
   }
 }
+
+export async function GET(request: NextRequest) {
+  try {
+    const { adminDb } = await getAdminClients();
+    await ensureAdminRequest(request);
+
+    const snapshot = await adminDb.collection('user').get();
+    const users = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return NextResponse.json(users, { status: 200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch users.';
+    const status = message.startsWith('Unauthorized') ? 401 : message.startsWith('Forbidden') ? 403 : 500;
+
+    return NextResponse.json({ error: message }, { status });
+  }
+}
