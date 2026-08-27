@@ -6,6 +6,7 @@ import { Lottie } from 'lottie-react';
 import Card from '@/components/common/Card';
 import { AlertCircle, CheckCircle2, MoreHorizontal, X } from 'lucide-react';
 import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
+import exerciseInOfficeAnimation from '@/assets/animations/exercise-in-office.json';
 import { db } from '@/lib/firebase';
 
 type ActivityRecord = {
@@ -20,6 +21,7 @@ type ActivityRecord = {
 };
 
 const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
+const EXERCISE_IN_OFFICE_ANIMATION_KEY = 'exercise-in-office';
 
 const resolveActivityAnimation = (activity: ActivityRecord) => {
   const title = activity.title.trim().toLowerCase();
@@ -32,8 +34,17 @@ const resolveActivityAnimation = (activity: ActivityRecord) => {
     return walkingOfficeManAnimation;
   }
 
+  if (
+    animationKey === EXERCISE_IN_OFFICE_ANIMATION_KEY ||
+    title.includes('desk')
+  ) {
+    return exerciseInOfficeAnimation;
+  }
+
   return null;
 };
+
+const displayTitle = (title: string) => title.replace(/^\d+[.)]\s*/, '');
 
 /**
  * Activities Page
@@ -148,7 +159,7 @@ export default function ActivitiesPage() {
                 <CheckCircle2 className="mt-0.5 h-5 w-5 text-teal-600" />
                 <div className="min-w-0">
                   <h2 className="text-base font-bold text-slate-900">
-                    {index + 1}. {activity.title}
+                    {index + 1}. {displayTitle(activity.title)}
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     {activity.category ? <span>{activity.category}</span> : null}
@@ -179,7 +190,7 @@ export default function ActivitiesPage() {
                   Activity Details
                 </p>
                 <h3 className="mt-1 text-xl font-bold text-slate-900">
-                  {selectedActivity.title}
+                  {displayTitle(selectedActivity.title)}
                 </h3>
               </div>
               <button

@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Lottie } from 'lottie-react';
-import { CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
+import { Bell, BellOff, CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { Icon } from '@/components/common/Icon';
 import Card from '@/components/common/Card';
 import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
+import exerciseInOfficeAnimation from '@/assets/animations/exercise-in-office.json';
 import { auth, db } from '@/lib/firebase';
 import { mockActivities } from '@/lib/mockData';
 
@@ -53,7 +54,10 @@ type DailyProgressDocument = PersistedDailyPlan & {
 const DAILY_PLAN_STORAGE_KEY = 'wellness-daily-plan-v1';
 const DAILY_PROGRESS_COLLECTION = 'dailyProgress';
 const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
+const EXERCISE_IN_OFFICE_ANIMATION_KEY = 'exercise-in-office';
 const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
+const ALARM_DURATION_SECONDS = 180;
+const SLOT_START_MINUTES = [9 * 60, 12 * 60, 15 * 60];
 const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
   {
     id: 'emergency-1',
@@ -82,7 +86,7 @@ const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
     type: 'Desk exercises',
     duration: 8,
     difficulty: 'Easy',
-    animationKey: '',
+    animationKey: EXERCISE_IN_OFFICE_ANIMATION_KEY,
     icon: 'Monitor',
   },
   {
@@ -155,6 +159,13 @@ const resolveActivityAnimation = (item: ScheduleItem) => {
     return walkingOfficeManAnimation;
   }
 
+  if (
+    animationKey === EXERCISE_IN_OFFICE_ANIMATION_KEY ||
+    title.includes('desk')
+  ) {
+    return exerciseInOfficeAnimation;
+  }
+
   return null;
 };
 
@@ -162,6 +173,23 @@ const formatSeconds = (totalSeconds: number) => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const playAlarmTone = () => {
+  if (typeof window === 'undefined' || !('AudioContext' in window)) {
+    return;
+  }
+
+  const audioContext = new AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.value = 880;
+  gain.gain.value = 0.08;
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.6);
 };
 
 /**
@@ -177,6 +205,10 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeDateKey, setActiveDateKey] = useState(getLocalDateKey());
+  const [alarmsEnabled, setAlarmsEnabled] = useState(false);
+  const [activeAlarmItem, setActiveAlarmItem] = useState<ScheduleItem | null>(null);
+  const [alarmSecondsRemaining, setAlarmSecondsRemaining] = useState(0);
+  const [triggeredAlarmKeys, setTriggeredAlarmKeys] = useState<string[]>([]);
 
   const iconMap: Record<string, string> = {
     Stretching: 'Accessibility',
@@ -427,6 +459,63 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     });
   }, [isLoading, scheduleItems.length]);
 
+  useEffect(() => {
+    if (!alarmsEnabled || activeAlarmItem || scheduleItems.length === 0) {
+      return;
+    }
+
+    const checkScheduleAlarm = () => {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const slotIndex = SLOT_START_MINUTES.findIndex((slot) => currentMinutes >= slot && currentMinutes < slot + ALARM_DURATION_SECONDS / 60);
+
+      if (slotIndex === -1) {
+        return;
+      }
+
+      const alarmKey = `${activeDateKey}-${slotIndex}`;
+      const alarmItem = scheduleItems[slotIndex];
+
+      if (!alarmItem || triggeredAlarmKeys.includes(alarmKey)) {
+        return;
+      }
+
+      setTriggeredAlarmKeys((current) => [...current, alarmKey]);
+      setActiveAlarmItem(alarmItem);
+      setAlarmSecondsRemaining(ALARM_DURATION_SECONDS - now.getSeconds());
+      playAlarmTone();
+
+      if ('Notification' in window && Notification.permission === 'granted') {
+        void new Notification('Wellness activity time', {
+          body: `${alarmItem.time}: ${alarmItem.title}`,
+        });
+      }
+    };
+
+    checkScheduleAlarm();
+    const interval = window.setInterval(checkScheduleAlarm, 1000);
+    return () => window.clearInterval(interval);
+  }, [activeDateKey, activeAlarmItem, alarmsEnabled, scheduleItems, triggeredAlarmKeys]);
+
+  useEffect(() => {
+    if (!activeAlarmItem || alarmSecondsRemaining <= 0) {
+      return;
+    }
+
+    playAlarmTone();
+    const interval = window.setInterval(() => {
+      setAlarmSecondsRemaining((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [activeAlarmItem, alarmSecondsRemaining]);
+
+  useEffect(() => {
+    if (alarmSecondsRemaining === 0 && activeAlarmItem) {
+      setActiveAlarmItem(null);
+    }
+  }, [activeAlarmItem, alarmSecondsRemaining]);
+
   const completedSet = useMemo(() => new Set(completedIds), [completedIds]);
 
   const handleOpenItem = (item: ScheduleItem) => {
@@ -449,6 +538,20 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     setCompletedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
   };
 
+  const enableAlarms = async () => {
+    setAlarmsEnabled(true);
+    playAlarmTone();
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
+
+  const stopAlarm = () => {
+    setActiveAlarmItem(null);
+    setAlarmSecondsRemaining(0);
+  };
+
   return (
     <>
       <Card className="rounded-[22px] bg-[#f5f8f8] p-4 shadow-none ring-0">
@@ -456,6 +559,29 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
           <h3 className="text-base font-bold text-slate-900">Schedule</h3>
           <span className="text-lg text-slate-400">...</span>
         </div>
+
+        <div className="mb-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
+          {alarmsEnabled ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1 font-medium text-teal-700"><Bell className="h-3.5 w-3.5" /> Alarms on at 9:00 AM, 12:00 PM, and 3:00 PM</span>
+              <button type="button" onClick={() => setAlarmsEnabled(false)} className="font-semibold text-slate-500 hover:text-slate-800">Turn off</button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1 text-slate-600"><BellOff className="h-3.5 w-3.5" /> Enable 3-minute activity alarms</span>
+              <button type="button" onClick={() => void enableAlarms()} className="font-semibold text-teal-700 hover:text-teal-800">Enable</button>
+            </div>
+          )}
+        </div>
+
+        {activeAlarmItem ? (
+          <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-amber-900">
+            <div className="flex items-start justify-between gap-3">
+              <div><p className="text-sm font-bold">Time for {activeAlarmItem.title}</p><p className="mt-1 text-xs">Alarm rings for {formatSeconds(alarmSecondsRemaining)}.</p></div>
+              <button type="button" onClick={stopAlarm} className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold">Stop</button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-2">
           {isLoading ? (
