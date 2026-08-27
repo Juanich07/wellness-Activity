@@ -1,7 +1,8 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
 import { AlertCircle, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import Button from '@/components/common/Button';
 import Card from '@/components/common/Card';
@@ -120,6 +121,7 @@ const callUserAdminApi = async (
 };
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -144,6 +146,11 @@ export default function AdminUsersPage() {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          // Session expired, redirect to login
+          await signOut(auth);
+          throw new Error('Your session has expired. Please log in again.');
+        }
         const data = (await response.json()) as Record<string, unknown>;
         throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load users');
       }
@@ -163,7 +170,15 @@ export default function AdminUsersPage() {
       );
     } catch (loadError) {
       console.error('Failed to load users', loadError);
-      setError('Could not load users from Firestore. Check admin permissions and rules for the user collection.');
+      const errorMessage = loadError instanceof Error ? loadError.message : 'Could not load users.';
+      setError(errorMessage);
+
+      // If session expired, redirect after a short delay
+      if (errorMessage.includes('session has expired')) {
+        setTimeout(() => {
+          router.push('/admin/login');
+        }, 1500);
+      }
     } finally {
       setLoading(false);
     }
