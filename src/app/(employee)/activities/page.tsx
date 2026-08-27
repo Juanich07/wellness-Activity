@@ -7,6 +7,9 @@ import Card from '@/components/common/Card';
 import { AlertCircle, CheckCircle2, MoreHorizontal, X } from 'lucide-react';
 import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
 import exerciseInOfficeAnimation from '@/assets/animations/exercise-in-office.json';
+import forearmStretchAnimation from '@/assets/animations/forearm-stretch.json';
+import deepBreathingAnimation from '@/assets/animations/deep-breathing.json';
+import breathingExerciseAnimation from '@/assets/animations/breathing-exercise.json';
 import { db } from '@/lib/firebase';
 
 type ActivityRecord = {
@@ -22,6 +25,9 @@ type ActivityRecord = {
 
 const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
 const EXERCISE_IN_OFFICE_ANIMATION_KEY = 'exercise-in-office';
+const FOREARM_STRETCH_ANIMATION_KEY = 'forearm-stretch';
+const DEEP_BREATHING_ANIMATION_KEY = 'deep-breathing';
+const BREATHING_EXERCISE_ANIMATION_KEY = 'breathing-exercise';
 
 const resolveActivityAnimation = (activity: ActivityRecord) => {
   const title = activity.title.trim().toLowerCase();
@@ -36,9 +42,35 @@ const resolveActivityAnimation = (activity: ActivityRecord) => {
 
   if (
     animationKey === EXERCISE_IN_OFFICE_ANIMATION_KEY ||
-    title.includes('desk')
+    title.includes('desk') ||
+    title.includes('shoulder') ||
+    title.includes('neck')
   ) {
     return exerciseInOfficeAnimation;
+  }
+
+  if (
+    animationKey === FOREARM_STRETCH_ANIMATION_KEY ||
+    title.includes('chair exercise') ||
+    title.includes('forearm')
+  ) {
+    return forearmStretchAnimation;
+  }
+
+  if (
+    animationKey === DEEP_BREATHING_ANIMATION_KEY ||
+    title.includes('fresh air') ||
+    title.includes('breathing')
+  ) {
+    return deepBreathingAnimation;
+  }
+
+  if (
+    animationKey === BREATHING_EXERCISE_ANIMATION_KEY ||
+    title.includes('eye rest') ||
+    title.includes('screen time')
+  ) {
+    return breathingExerciseAnimation;
   }
 
   return null;
