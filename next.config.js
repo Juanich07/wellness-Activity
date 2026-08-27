@@ -9,12 +9,6 @@ const nextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals.push('jose', 'jwks-rsa');
-    }
-    return config;
-  },
   async headers() {
     return [
       {

@@ -10,7 +10,10 @@ type ServiceAccountShape = {
   private_key: string;
 };
 
-let adminApp: App;
+let adminApp: App | null = null;
+let initError: Error | null = null;
+let authInstance: ReturnType<typeof getAuth> | null = null;
+let dbInstance: ReturnType<typeof getFirestore> | null = null;
 
 function parseServiceAccount(): ServiceAccountShape {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -62,19 +65,47 @@ function parseServiceAccount(): ServiceAccountShape {
   };
 }
 
-if (getApps().length === 0) {
-  const serviceAccount = parseServiceAccount();
+function initializeAdmin(): void {
+  if (adminApp || initError) {
+    return;
+  }
 
-  adminApp = initializeApp({
-    credential: cert({
-      projectId: serviceAccount.project_id,
-      clientEmail: serviceAccount.client_email,
-      privateKey: serviceAccount.private_key,
-    }),
-  });
-} else {
-  adminApp = getApps()[0] as App;
+  try {
+    if (getApps().length === 0) {
+      const serviceAccount = parseServiceAccount();
+
+      adminApp = initializeApp({
+        credential: cert({
+          projectId: serviceAccount.project_id,
+          clientEmail: serviceAccount.client_email,
+          privateKey: serviceAccount.private_key,
+        }),
+      });
+    } else {
+      adminApp = getApps()[0] as App;
+    }
+
+    authInstance = getAuth(adminApp);
+    dbInstance = getFirestore(adminApp);
+  } catch (error) {
+    initError = error instanceof Error ? error : new Error('Unknown initialization error');
+    console.error('Firebase Admin initialization error:', initError);
+    throw initError;
+  }
 }
 
-export const adminAuth = getAuth(adminApp);
-export const adminDb = getFirestore(adminApp);
+export function getAdminAuth(): ReturnType<typeof getAuth> {
+  initializeAdmin();
+  if (!authInstance) {
+    throw new Error('Firebase Admin Auth not initialized');
+  }
+  return authInstance;
+}
+
+export function getAdminDb(): ReturnType<typeof getFirestore> {
+  initializeAdmin();
+  if (!dbInstance) {
+    throw new Error('Firebase Admin Firestore not initialized');
+  }
+  return dbInstance;
+}
