@@ -12,38 +12,94 @@ function normalizeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-async function getFirestore() {
-  const { getFirestore } = await import('firebase-admin/firestore');
-  const { getApps, initializeApp, cert } = await import('firebase-admin/app');
+async function firestoreRead(path: string) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!raw) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY must be configured.');
+  if (!projectId || !apiKey) {
+    throw new Error('Firebase config not available');
   }
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  const response = await fetch(url, { method: 'GET' });
   
-  let serviceAccount: any;
-  try {
-    serviceAccount = JSON.parse(raw);
-  } catch {
-    throw new Error('Firebase service account value is not valid JSON.');
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error('Failed to read document');
   }
-  
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: serviceAccount.project_id,
-        clientEmail: serviceAccount.client_email,
-        privateKey: serviceAccount.private_key.replace(/\\n/g, '\n'),
-      }),
-    });
-  }
-  
-  return getFirestore();
+
+  return (await response.json()) as any;
 }
 
-async function getFieldValue() {
-  const { FieldValue } = await import('firebase-admin/firestore');
-  return FieldValue;
+async function firestoreWrite(path: string, data: Record<string, any>) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  
+  if (!projectId || !apiKey) {
+    throw new Error('Firebase config not available');
+  }
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  
+  const fields: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value instanceof Date) {
+      fields[key] = { timestampValue: value.toISOString() };
+    } else if (typeof value === 'string') {
+      fields[key] = { stringValue: value };
+    } else if (typeof value === 'boolean') {
+      fields[key] = { booleanValue: value };
+    } else if (typeof value === 'number') {
+      fields[key] = { doubleValue: value };
+    } else {
+      fields[key] = { nullValue: null };
+    }
+  }
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to write document');
+  }
+}
+
+async function firestoreDelete(path: string) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  
+  if (!projectId || !apiKey) {
+    throw new Error('Firebase config not available');
+  }
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  const response = await fetch(url, { method: 'DELETE' });
+  
+  if (!response.ok && response.status !== 404) {
+    throw new Error('Failed to delete document');
+  }
+}
+
+async function firestoreQuery(collectionPath: string) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  
+  if (!projectId || !apiKey) {
+    throw new Error('Firebase config not available');
+  }
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionPath}?key=${apiKey}`;
+  const response = await fetch(url, { method: 'GET' });
+  
+  if (!response.ok) {
+    throw new Error('Failed to query collection');
+  }
+
+  const data = (await response.json()) as any;
+  return data.documents || [];
 }
 
 async function verifyAdminToken(token: string): Promise<string> {
@@ -75,11 +131,10 @@ async function verifyAdminToken(token: string): Promise<string> {
 
     const uid = data.users[0].localId;
     
-    // Check if user is admin in Firestore
-    const db = await getFirestore();
-    const adminDoc = await db.collection('admin').doc(uid).get();
+    // Check if user is admin in Firestore using Firestore REST API
+    const adminDoc = await firestoreRead(`admin/${uid}`);
     
-    if (!adminDoc.exists || adminDoc.data()?.active !== true) {
+    if (!adminDoc?.fields?.active?.booleanValue) {
       throw new Error('Forbidden: admin access required.');
     }
 
@@ -177,36 +232,32 @@ async function upsertRoleDocuments(params: {
   actorUid: string;
 }) {
   const { uid, role, email, name, active, department, actorUid } = params;
-  const db = await getFirestore();
-  const FieldValue = await getFieldValue();
+  const now = new Date().toISOString();
 
-  await db.collection('user').doc(uid).set(
-    {
-      email,
-      name,
-      department,
-      role,
-      active,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: actorUid,
-    },
-    { merge: true }
-  );
+  // Update user document
+  await firestoreWrite(`user/${uid}`, {
+    email,
+    name,
+    department,
+    role,
+    active,
+    updatedAt: now,
+    updatedBy: actorUid,
+  });
 
   if (role === 'admin') {
-    await db.collection('admin').doc(uid).set(
-      {
-        email,
-        name,
-        active,
-        role,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: actorUid,
-      },
-      { merge: true }
-    );
+    // Create/update admin document
+    await firestoreWrite(`admin/${uid}`, {
+      email,
+      name,
+      active,
+      role,
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
   } else {
-    await db.collection('admin').doc(uid).delete().catch(() => undefined);
+    // Delete admin document if employee
+    await firestoreDelete(`admin/${uid}`).catch(() => undefined);
   }
 }
 
@@ -252,15 +303,12 @@ export async function POST(request: NextRequest) {
       actorUid,
     });
 
-    const db = await getFirestore();
-    const FieldValue = await getFieldValue();
-    await db.collection('user').doc(createdUid).set(
-      {
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: actorUid,
-      },
-      { merge: true }
-    );
+    // Add creation timestamp
+    const now = new Date().toISOString();
+    await firestoreWrite(`user/${createdUid}`, {
+      createdAt: now,
+      createdBy: actorUid,
+    });
 
     return NextResponse.json({ uid: createdUid }, { status: 201 });
   } catch (error) {
@@ -341,9 +389,8 @@ export async function DELETE(request: NextRequest) {
 
     await deleteAuthUser(uid);
 
-    const db = await getFirestore();
-    await db.collection('user').doc(uid).delete().catch(() => undefined);
-    await db.collection('admin').doc(uid).delete().catch(() => undefined);
+    await firestoreDelete(`user/${uid}`).catch(() => undefined);
+    await firestoreDelete(`admin/${uid}`).catch(() => undefined);
 
     return NextResponse.json({ uid }, { status: 200 });
   } catch (error) {
@@ -362,12 +409,18 @@ export async function GET(request: NextRequest) {
     const token = authHeader.slice('Bearer '.length).trim();
     await verifyAdminToken(token);
 
-    const db = await getFirestore();
-    const snapshot = await db.collection('user').get();
-    const users = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const docs = await firestoreQuery('user');
+    const users = docs.map((doc: any) => {
+      const fields = doc.fields || {};
+      return {
+        id: doc.name?.split('/').pop() || '',
+        name: fields.name?.stringValue || '',
+        email: fields.email?.stringValue || '',
+        department: fields.department?.stringValue || '',
+        role: fields.role?.stringValue || '',
+        active: fields.active?.booleanValue ?? true,
+      };
+    });
 
     return NextResponse.json(users, { status: 200 });
   } catch (error) {
