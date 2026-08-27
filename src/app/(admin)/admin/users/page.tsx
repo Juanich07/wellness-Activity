@@ -170,7 +170,11 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    void loadUsers();
+    const unsubscribe = onAuthStateChanged(auth, async () => {
+      await loadUsers();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const filteredUsers = useMemo(() => {
