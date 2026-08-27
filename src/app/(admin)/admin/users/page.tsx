@@ -170,11 +170,33 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async () => {
-      await loadUsers();
-    });
+    let isMounted = true;
 
-    return () => unsubscribe();
+    const initializeAndLoad = async () => {
+      // Wait for Firebase auth to restore session from storage
+      await new Promise<void>((resolve) => {
+        const timeoutId = window.setTimeout(() => {
+          unsubscribe();
+          resolve();
+        }, 2000);
+
+        const unsubscribe = onAuthStateChanged(auth, () => {
+          window.clearTimeout(timeoutId);
+          unsubscribe();
+          resolve();
+        });
+      });
+
+      if (isMounted) {
+        await loadUsers();
+      }
+    };
+
+    void initializeAndLoad();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const filteredUsers = useMemo(() => {
