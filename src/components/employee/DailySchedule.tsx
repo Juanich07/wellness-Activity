@@ -399,7 +399,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     );
 
     return () => unsubscribe();
-  }, [items]);
+  }, [items, fallbackActivities]);
 
   useEffect(() => {
     if (!selectedItem || !isTimerRunning || secondsRemaining <= 0) {
@@ -652,7 +652,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
           <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Today's Activity</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Today&apos;s Activity</p>
                 <h3 className="mt-1 text-xl font-bold text-slate-900">{selectedItem.title}</h3>
                 <p className="mt-1 text-xs text-slate-500">
                   {selectedItem.type} | {selectedItem.duration} min

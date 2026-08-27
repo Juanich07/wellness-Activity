@@ -42,7 +42,7 @@ export default function EmployeeDashboard() {
       <div className="hidden md:block">
         <h1 className="text-3xl font-bold text-slate-900">Welcome Back!</h1>
         <p className="mt-2 text-slate-600">
-          Let's keep up your wellness streak. You're doing great! 🎉
+          Let&apos;s keep up your wellness streak. You&apos;re doing great! 🎉
         </p>
       </div>
 

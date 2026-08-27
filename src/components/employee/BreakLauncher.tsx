@@ -23,7 +23,7 @@ export default function BreakLauncher() {
   return (
     <Card className="rounded-[22px] border-0 bg-gradient-to-br from-[#74c8d3] via-[#7bc9d3] to-[#a7e0d9] p-0 shadow-none">
       <div className="rounded-[22px] p-4">
-        <h3 className="text-lg font-bold text-slate-900">Today's Wellness Break</h3>
+        <h3 className="text-lg font-bold text-slate-900">Today&apos;s Wellness Break</h3>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {phases.map(({ label, Icon }) => (

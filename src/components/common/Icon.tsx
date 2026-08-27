@@ -15,7 +15,7 @@ interface IconProps {
  * Usage: <Icon name="Yoga" className="h-6 w-6" />
  */
 export function Icon({ name, className = 'h-5 w-5', size = 20, strokeWidth = 1.5 }: IconProps) {
-  const IconComponent = (LucideIcons as Record<string, React.ComponentType<any>>)[name];
+  const IconComponent = (LucideIcons as unknown as Record<string, React.ComponentType<any>>)[name];
 
   if (!IconComponent) {
     console.warn(`Icon "${name}" not found in lucide-react`);

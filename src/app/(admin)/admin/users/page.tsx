@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
-  doc,
   getDocs,
 } from 'firebase/firestore';
 import { AlertCircle, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
@@ -398,7 +397,7 @@ export default function AdminUsersPage() {
               </div>
               <button
                 type="button"
-                onClick={closeModal}
+                onClick={() => closeModal()}
                 className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
                 aria-label="Close user modal"
               >
@@ -487,7 +486,7 @@ export default function AdminUsersPage() {
               </label>
 
               <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-                <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
+                <Button type="button" variant="secondary" onClick={() => closeModal()} disabled={saving}>
                   Cancel
                 </Button>
                 <Button type="submit" isLoading={saving}>
