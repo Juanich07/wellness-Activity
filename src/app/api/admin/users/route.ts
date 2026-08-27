@@ -3,6 +3,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 
+export const dynamic = 'force-dynamic';
+
 type UserRole = 'admin' | 'employee';
 
 function hasAuthCode(error: unknown, code: string) {
