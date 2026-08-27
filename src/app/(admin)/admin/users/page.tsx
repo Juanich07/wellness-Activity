@@ -60,7 +60,7 @@ const waitForAuthState = async () => {
     const timeoutId = window.setTimeout(() => {
       unsubscribe();
       resolve();
-    }, 1500);
+    }, 3000);
 
     const unsubscribe = onAuthStateChanged(auth, () => {
       window.clearTimeout(timeoutId);
@@ -74,10 +74,14 @@ const getAdminToken = async () => {
   await waitForAuthState();
 
   if (auth.currentUser) {
-    const refreshedToken = await auth.currentUser.getIdToken(true);
-    document.cookie = `token=${encodeURIComponent(refreshedToken)}; path=/; max-age=3600; samesite=lax`;
-    document.cookie = 'role=admin; path=/; max-age=3600; samesite=lax';
-    return refreshedToken;
+    try {
+      const refreshedToken = await auth.currentUser.getIdToken(true);
+      document.cookie = `token=${encodeURIComponent(refreshedToken)}; path=/; max-age=3600; samesite=lax`;
+      document.cookie = 'role=admin; path=/; max-age=3600; samesite=lax';
+      return refreshedToken;
+    } catch (error) {
+      console.error('Failed to get ID token:', error);
+    }
   }
 
   const cookieToken = getTokenFromCookie();
