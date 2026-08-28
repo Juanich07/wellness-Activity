@@ -327,9 +327,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (email || password) {
+      console.log('PATCH: Updating auth user', { userUid, email: !!email, password: !!password });
       await updateAuthUser(userUid, email || undefined, password || undefined);
+      console.log('PATCH: Auth user updated successfully');
     }
 
+    console.log('PATCH: Upserting role documents', { userUid, role });
     await upsertRoleDocuments({
       uid: userUid,
       role,
@@ -339,10 +342,12 @@ export async function PATCH(request: NextRequest) {
       department,
       actorUid,
     });
+    console.log('PATCH: Role documents upserted successfully');
 
     return NextResponse.json({ uid: userUid }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update user.';
+    console.error('PATCH error:', { message, stack: error instanceof Error ? error.stack : undefined });
     const status = message.startsWith('Unauthorized') ? 401 : message.startsWith('Forbidden') ? 403 : 500;
     return NextResponse.json({ error: message }, { status });
   }
