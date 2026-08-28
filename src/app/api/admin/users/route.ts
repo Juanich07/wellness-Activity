@@ -191,28 +191,6 @@ async function createAuthUser(email: string, password: string): Promise<string> 
   return data.localId;
 }
 
-async function updateAuthUser(uid: string, email?: string, password?: string): Promise<void> {
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  if (!apiKey) {
-    throw new Error('Firebase API key not configured');
-  }
-
-  const body: any = {};
-  if (email) body.email = email;
-  if (password) body.password = password;
-
-  const response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:update?key=' + apiKey, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...body, localId: uid, returnSecureToken: false }),
-  });
-
-  if (!response.ok) {
-    const error = (await response.json()) as any;
-    throw new Error(error?.error?.message || 'Failed to update user');
-  }
-}
-
 async function deleteAuthUser(uid: string): Promise<void> {
   // Note: Firebase Identity Toolkit API requires idToken for deletion, not localId.
   // Since we don't have the user's token on the server, we can't delete from Auth via REST API.
@@ -309,7 +287,7 @@ export async function POST(request: NextRequest) {
     await firestoreWrite(`user/${createdUid}`, {
       createdAt: now,
       createdBy: actorUid,
-    });
+    }, token);
 
     return NextResponse.json({ uid: createdUid }, { status: 201 });
   } catch (error) {
@@ -334,7 +312,6 @@ export async function PATCH(request: NextRequest) {
     const name = normalizeString(body.name);
     const email = normalizeString(body.email);
     const department = normalizeString(body.department);
-    const password = normalizeString(body.password);
     const role = body.role;
     const active = body.active !== false;
 
@@ -350,13 +327,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Role must be admin or employee.' }, { status: 400 });
     }
 
-    if (email || password) {
-      console.log('PATCH: Updating auth user', { userUid, email: !!email, password: !!password });
-      await updateAuthUser(userUid, email || undefined, password || undefined);
-      console.log('PATCH: Auth user updated successfully');
-    }
-
-    console.log('PATCH: Upserting role documents', { userUid, role });
+    console.log('PATCH: Updating Firestore user metadata', { userUid, role });
     await upsertRoleDocuments({
       uid: userUid,
       role,

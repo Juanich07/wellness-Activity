@@ -27,6 +27,7 @@ export default function LoginPage() {
       }
 
       const credentials = await signInWithEmailAndPassword(auth, email, password);
+
       const token = await credentials.user.getIdToken();
       const cookieValue = `token=${token}; path=/; max-age=3600; samesite=lax`;
 
@@ -37,7 +38,7 @@ export default function LoginPage() {
       const firebaseError = signInError as { code?: string; message?: string };
       const message = firebaseError.code
         ? `${firebaseError.code}: ${firebaseError.message ?? 'Sign-in failed.'}`
-        : 'Invalid email or password. Please try again.';
+        : signInError instanceof Error ? signInError.message : 'Unable to complete this request.';
 
       setError(message);
       console.error('Sign-in error:', signInError);
@@ -49,8 +50,8 @@ export default function LoginPage() {
   return (
     <div className="card p-8 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Wellness App</h1>
-        <p className="text-slate-600 mt-2">Employee Health & Wellness Platform</p>
+        <h1 className="text-3xl font-bold text-slate-900">Welcome back</h1>
+        <p className="text-slate-600 mt-2">Sign in to continue your wellness journey.</p>
       </div>
 
       <form className="space-y-4" onSubmit={handleSignIn}>
@@ -69,7 +70,7 @@ export default function LoginPage() {
           <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
           <input
             type="password"
-            placeholder="••••••••"
+              placeholder="********"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
@@ -85,21 +86,18 @@ export default function LoginPage() {
 
         <div className="space-y-3">
           <button className="btn-primary w-full" type="submit" disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Logging in...' : 'Log in'}
           </button>
 
-          <Link
-            href="/dashboard"
-            className="flex w-full items-center justify-center rounded-lg border-2 border-teal-600 px-4 py-2.5 text-sm font-semibold text-teal-600 transition-colors hover:bg-teal-50"
-          >
-            Preview Dashboard →
+          <Link href="/signup" className="block w-full text-center text-sm font-semibold text-teal-700 hover:text-teal-900">
+            Need an account? Sign up
           </Link>
 
           <Link
-            href="/admin/login"
-            className="flex w-full items-center justify-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            href="/admin"
+            className="block w-full text-center text-sm font-semibold text-slate-600 hover:text-slate-900"
           >
-            Admin Login →
+            Admin login
           </Link>
         </div>
       </form>

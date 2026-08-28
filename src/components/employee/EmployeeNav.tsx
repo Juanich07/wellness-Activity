@@ -10,6 +10,7 @@ import {
   BookOpen,
   Trophy,
   MessageSquare,
+  UserCircle,
   Menu,
   X,
   LogOut,
@@ -33,6 +34,7 @@ export default function EmployeeNav() {
     { label: 'Progress', href: '/progress', Icon: TrendingUp },
     { label: 'Challenges', href: '/challenges', Icon: Trophy },
     { label: 'Feedback', href: '/feedback', Icon: MessageSquare },
+    { label: 'Profile', href: '/profile', Icon: UserCircle },
   ];
 
   const isActive = (href: string) => pathname === href;
