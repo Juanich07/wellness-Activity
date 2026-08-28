@@ -39,16 +39,17 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Use PATCH with updateMask as comma-separated field paths in query string
-  const updateMask = fieldPaths.join(',');
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?updateMask=${encodeURIComponent(updateMask)}&key=${apiKey}`;
+  // For PATCH: build updateMask.fieldPaths[] in query string
+  // Format: ?updateMask.fieldPaths=field1&updateMask.fieldPaths=field2&key=...
+  const maskParams = fieldPaths.map(fp => `updateMask.fieldPaths=${encodeURIComponent(fp)}`).join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?${maskParams}&key=${apiKey}`;
   
   const body = { fields };
 
   console.log('Firestore PATCH request:', { 
     url: url.split('?')[0], 
-    updateMask, 
-    fieldCount: fieldPaths.length 
+    fieldCount: fieldPaths.length,
+    fields: fieldPaths
   });
 
   const response = await fetch(url, {
