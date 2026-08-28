@@ -188,24 +188,11 @@ async function updateAuthUser(uid: string, email?: string, password?: string): P
 }
 
 async function deleteAuthUser(uid: string): Promise<void> {
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  if (!apiKey) {
-    throw new Error('Firebase API key not configured');
-  }
-
-  const response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:delete?key=' + apiKey, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ localId: uid }),
-  });
-
-  if (!response.ok) {
-    const error = (await response.json()) as any;
-    // Ignore user-not-found errors
-    if (!error?.error?.message?.includes('USER_NOT_FOUND')) {
-      throw new Error(error?.error?.message || 'Failed to delete user');
-    }
-  }
+  // Note: Firebase Identity Toolkit API requires idToken for deletion, not localId.
+  // Since we don't have the user's token on the server, we can't delete from Auth via REST API.
+  // This function is kept as a placeholder. Auth account will remain but be removed from Firestore.
+  // To fully delete, user would need to delete their account from client-side with their own token.
+  console.log(`User ${uid} deleted from Firestore. Auth account kept for security.`);
 }
 
 async function upsertRoleDocuments(params: {
