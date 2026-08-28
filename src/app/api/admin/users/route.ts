@@ -38,16 +38,21 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Build URL without updateMask - let Firestore merge the provided fields
+  // Build URL without updateMask - it should be in request body
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
   
+  // Include updateMask in request body for partial updates
   const body = {
-    fields
+    fields,
+    updateMask: {
+      fieldPaths: fieldNames
+    }
   };
 
   console.log('Firestore PATCH request:', {
     url: url.split('?')[0],
     fields: Object.keys(fields),
+    maskFields: fieldNames
   });
 
   const response = await fetch(url, {
