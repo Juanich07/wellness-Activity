@@ -21,8 +21,10 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
   }
 
   const fields: Record<string, any> = {};
+  const fieldPaths: string[] = [];
   
   for (const [key, value] of Object.entries(data)) {
+    fieldPaths.push(key);
     if (value instanceof Date) {
       fields[key] = { timestampValue: value.toISOString() };
     } else if (typeof value === 'string') {
@@ -36,16 +38,15 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Use PATCH with updateMask in query string
-  const fieldNames = Object.keys(fields);
-  let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  // Use PATCH with mask in request body (not updateMask in query)
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
   
-  // Add updateMask to query string
-  for (const field of fieldNames) {
-    url += `&updateMask.fieldPaths=${field}`;
-  }
-  
-  const body = { fields };
+  const body = {
+    fields,
+    mask: {
+      fieldPaths
+    }
+  };
 
   const response = await fetch(url, {
     method: 'PATCH',
@@ -59,7 +60,7 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
       status: response.status,
       url: url.split('?')[0],
       error: errorText,
-      fields: fieldNames
+      fields: fieldPaths
     });
     throw new Error(`Failed to write document: ${response.status} - ${errorText}`);
   }
