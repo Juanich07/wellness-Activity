@@ -2,13 +2,33 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { AlertCircle, Search, User, X } from 'lucide-react';
 import Card from '@/components/common/Card';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { asDailyProgressRecord, DailyProgressRecord, getLocalDateKey } from '@/lib/dailyProgress';
 
 type EmployeeRecord = { id: string; name?: string; email?: string; role?: string };
 const labelFor = (user: EmployeeRecord) => user.name || user.email || user.id;
+
+const waitForAuthState = async () => {
+  if (auth.currentUser) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      unsubscribe();
+      resolve();
+    }, 3000);
+
+    const unsubscribe = onAuthStateChanged(auth, () => {
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+      resolve();
+    });
+  });
+};
 
 export default function ParticipationPage() {
   const [users, setUsers] = useState<EmployeeRecord[]>([]);
@@ -21,6 +41,9 @@ export default function ParticipationPage() {
   useEffect(() => {
     const load = async () => {
       try {
+        // Wait for authentication to be restored before reading from Firestore
+        await waitForAuthState();
+        
         const [userSnapshot, progressSnapshot] = await Promise.all([getDocs(collection(db, 'user')), getDocs(collection(db, 'dailyProgress'))]);
         const loadedUsers = userSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as EmployeeRecord).filter((user) => user.role !== 'admin');
         setUsers(loadedUsers);
