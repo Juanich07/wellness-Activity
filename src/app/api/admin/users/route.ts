@@ -38,9 +38,11 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Build updateMask query parameter with comma-separated field paths
-  const updateMaskValue = fieldNames.map(name => encodeURIComponent(name)).join(',');
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}&updateMask.fieldPaths=${updateMaskValue}`;
+  // Build URL with repeated updateMask.fieldPaths query parameters
+  let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  for (const fieldName of fieldNames) {
+    url += `&updateMask.fieldPaths=${encodeURIComponent(fieldName)}`;
+  }
   
   const response = await fetch(url, {
     method: 'PATCH',
