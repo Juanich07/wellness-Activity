@@ -38,22 +38,33 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Build URL with repeated updateMask.fieldPaths query parameters
-  let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
-  for (const fieldName of fieldNames) {
-    url += `&updateMask.fieldPaths=${encodeURIComponent(fieldName)}`;
-  }
+  // Build URL without updateMask - let Firestore merge the provided fields
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
   
+  const body = {
+    fields
+  };
+
+  console.log('Firestore PATCH request:', {
+    url: url.split('?')[0],
+    fields: Object.keys(fields),
+  });
+
   const response = await fetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Firestore write error: ${response.status}`, errorText);
-    throw new Error(`Failed to write document: ${response.status}`);
+    console.error(`Firestore write error: ${response.status}`, {
+      status: response.status,
+      url: url.split('?')[0],
+      error: errorText,
+      fields: Object.keys(fields)
+    });
+    throw new Error(`Failed to write document: ${response.status} - ${errorText}`);
   }
 }
 
