@@ -20,10 +20,11 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     throw new Error('Firebase config not available');
   }
 
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
-  
   const fields: Record<string, any> = {};
+  const fieldNames: string[] = [];
+  
   for (const [key, value] of Object.entries(data)) {
+    fieldNames.push(key);
     if (value instanceof Date) {
       fields[key] = { timestampValue: value.toISOString() };
     } else if (typeof value === 'string') {
@@ -37,6 +38,10 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
+  // Build updateMask query parameter
+  const updateMask = fieldNames.map(name => `updateMask.fieldPaths=${encodeURIComponent(name)}`).join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}&${updateMask}`;
+  
   const response = await fetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
