@@ -12,7 +12,7 @@ function normalizeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-async function firestoreWrite(path: string, data: Record<string, any>) {
+async function firestoreWrite(path: string, data: Record<string, any>, idToken?: string) {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
@@ -54,7 +54,10 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
 
   const response = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    },
     body: JSON.stringify(body),
   });
 
@@ -72,7 +75,7 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
   console.log('Firestore PATCH successful');
 }
 
-async function firestoreDelete(path: string) {
+async function firestoreDelete(path: string, idToken?: string) {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
@@ -81,7 +84,10 @@ async function firestoreDelete(path: string) {
   }
 
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
-  const response = await fetch(url, { method: 'DELETE' });
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+  });
   
   if (!response.ok && response.status !== 404) {
     const errorText = await response.text();
@@ -90,7 +96,7 @@ async function firestoreDelete(path: string) {
   }
 }
 
-async function firestoreQuery(collectionPath: string) {
+async function firestoreQuery(collectionPath: string, idToken?: string) {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   
@@ -99,7 +105,10 @@ async function firestoreQuery(collectionPath: string) {
   }
 
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionPath}?key=${apiKey}`;
-  const response = await fetch(url, { method: 'GET' });
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+  });
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -220,8 +229,9 @@ async function upsertRoleDocuments(params: {
   active: boolean;
   department: string;
   actorUid: string;
+  idToken: string;
 }) {
-  const { uid, role, email, name, active, department, actorUid } = params;
+  const { uid, role, email, name, active, department, actorUid, idToken } = params;
   const now = new Date().toISOString();
 
   // Update user document
@@ -233,7 +243,7 @@ async function upsertRoleDocuments(params: {
     active,
     updatedAt: now,
     updatedBy: actorUid,
-  });
+  }, idToken);
 
   if (role === 'admin') {
     // Create/update admin document
@@ -244,10 +254,10 @@ async function upsertRoleDocuments(params: {
       role,
       updatedAt: now,
       updatedBy: actorUid,
-    });
+    }, idToken);
   } else {
     // Delete admin document if employee
-    await firestoreDelete(`admin/${uid}`).catch(() => undefined);
+    await firestoreDelete(`admin/${uid}`, idToken).catch(() => undefined);
   }
 }
 
@@ -291,6 +301,7 @@ export async function POST(request: NextRequest) {
       active,
       department,
       actorUid,
+      idToken: token,
     });
 
     // Add creation timestamp
@@ -354,6 +365,7 @@ export async function PATCH(request: NextRequest) {
       active,
       department,
       actorUid,
+      idToken: token,
     });
     console.log('PATCH: Role documents upserted successfully');
 
@@ -384,8 +396,8 @@ export async function DELETE(request: NextRequest) {
 
     await deleteAuthUser(uid);
 
-    await firestoreDelete(`user/${uid}`).catch(() => undefined);
-    await firestoreDelete(`admin/${uid}`).catch(() => undefined);
+    await firestoreDelete(`user/${uid}`, token).catch(() => undefined);
+    await firestoreDelete(`admin/${uid}`, token).catch(() => undefined);
 
     return NextResponse.json({ uid }, { status: 200 });
   } catch (error) {
@@ -404,7 +416,7 @@ export async function GET(request: NextRequest) {
     const token = authHeader.slice('Bearer '.length).trim();
     await verifyAdminToken(token);
 
-    const docs = await firestoreQuery('user');
+    const docs = await firestoreQuery('user', token);
     const users = docs.map((doc: any) => {
       const fields = doc.fields || {};
       return {
