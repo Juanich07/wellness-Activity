@@ -36,15 +36,19 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
     }
   }
 
-  // Simple URL without any updateMask
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  // Build URL with updateMask in query parameters
+  const fieldNames = Object.keys(fields);
+  let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?key=${apiKey}`;
+  for (const field of fieldNames) {
+    url += `&updateMask.fieldPaths=${field}`;
+  }
   
-  // Just send the fields - Firestore will merge them
+  // Send fields with updateMask specification
   const body = { fields };
 
   console.log('Firestore PATCH request:', {
     url: url.split('?')[0],
-    fields: Object.keys(fields),
+    fields: fieldNames,
     body
   });
 
@@ -60,7 +64,7 @@ async function firestoreWrite(path: string, data: Record<string, any>) {
       status: response.status,
       url: url.split('?')[0],
       error: errorText,
-      body
+      fields: fieldNames
     });
     throw new Error(`Failed to write document: ${response.status} - ${errorText}`);
   }
