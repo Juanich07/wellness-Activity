@@ -5,6 +5,7 @@ import { Play, Pause, BellRing } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import { Icon } from '@/components/common/Icon';
+import { safeNotify } from '@/lib/notify';
 
 type BreakPhase = 'warm-up' | 'video' | 'cool-down' | 'message';
 
@@ -118,7 +119,7 @@ export default function BreakPage() {
 
       if (typeof window !== 'undefined' && 'Notification' in window) {
         if (Notification.permission === 'granted') {
-          void new Notification('Wellness Alarm', {
+          void safeNotify('Wellness Alarm', {
             body: 'Time for your next wellness action.',
           });
         } else if (Notification.permission === 'default') {

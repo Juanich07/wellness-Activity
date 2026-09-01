@@ -13,6 +13,7 @@ import deepBreathingAnimation from '@/assets/animations/deep-breathing.json';
 import breathingExerciseAnimation from '@/assets/animations/breathing-exercise.json';
 import { auth, db } from '@/lib/firebase';
 import { mockActivities } from '@/lib/mockData';
+import { safeNotify } from '@/lib/notify';
 
 interface ScheduleItem {
   id: string;
@@ -520,7 +521,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
       playAlarmTone();
 
       if ('Notification' in window && Notification.permission === 'granted') {
-        void new Notification('Wellness activity time', {
+        void safeNotify('Wellness activity time', {
           body: `${alarmItem.time}: ${alarmItem.title}`,
         });
       }

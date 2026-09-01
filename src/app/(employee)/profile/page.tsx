@@ -7,6 +7,7 @@ import { AlertCircle, Bell, CheckCircle2, UserCircle } from 'lucide-react';
 import Button from '@/components/common/Button';
 import Card from '@/components/common/Card';
 import { auth, db } from '@/lib/firebase';
+import { safeNotify } from '@/lib/notify';
 
 type Profile = {
   name: string;
@@ -61,7 +62,7 @@ export default function ProfilePage() {
     window.localStorage.setItem('wellness-notifications-enabled', String(enabled));
 
     if (enabled) {
-      new Notification('Wellness notifications enabled', { body: 'You will receive activity reminders while the schedule is open.' });
+      void safeNotify('Wellness notifications enabled', { body: 'You will receive activity reminders while the schedule is open.' });
       setMessage('Phone notifications are enabled.');
     } else if (permission === 'denied') {
       setError('Notifications are blocked in your browser or phone settings.');

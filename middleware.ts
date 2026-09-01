@@ -18,7 +18,7 @@ function resolveRole(token: DecodedToken) {
 // Protected routes configuration
 const PROTECTED_ROUTES = {
   admin: ['/admin'],
-  employee: ['/dashboard', '/activities', '/break', '/check-in', '/progress', '/education', '/challenges', '/feedback'],
+  employee: ['/dashboard', '/activities', '/break', '/check-in', '/progress', '/education', '/challenges', '/feedback', '/profile'],
   auth: ['/login'],
 };
 
@@ -52,12 +52,6 @@ export async function middleware(request: NextRequest) {
         return NextResponse.next();
       }
     }
-    return NextResponse.next();
-  }
-
-  // Allow unauthenticated access to employee pages for demo/preview
-  const PREVIEW_ROUTES = ['/dashboard', '/activities', '/break', '/progress', '/education', '/challenges', '/feedback'];
-  if (PREVIEW_ROUTES.some((r) => pathname.startsWith(r))) {
     return NextResponse.next();
   }
 
