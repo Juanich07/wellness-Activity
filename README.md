@@ -285,9 +285,10 @@ All mock data is in `src/lib/mockData.ts` and can be replaced with real Firestor
    - Export reports functionality
 
 5. **Push Notifications**
-   - Daily wellness reminders
-   - Break time alerts
-   - Challenge updates
+  - Create a Web Push certificate in Firebase Console > Project Settings > Cloud Messaging.
+  - Add its public key as `NEXT_PUBLIC_FIREBASE_VAPID_KEY` and set a long `CRON_SECRET` in the deployment environment.
+  - Configure a trusted scheduler to POST to `/api/notifications/send` at the desired times with the `x-cron-secret` header. The request body may be `{ "title": "Wellness activity time", "body": "Time for your activity", "url": "/dashboard" }`.
+  - After an employee enables alarms, their browser token is stored and can receive notifications with the tab or browser closed. Tokens are removed during logout.
 
 6. **Mobile App**
    - React Native adaptation

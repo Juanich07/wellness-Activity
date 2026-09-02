@@ -65,7 +65,7 @@ const DEEP_BREATHING_ANIMATION_KEY = 'deep-breathing';
 const BREATHING_EXERCISE_ANIMATION_KEY = 'breathing-exercise';
 const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
 const ALARM_DURATION_SECONDS = 180;
-const SLOT_START_MINUTES = [9 * 60, 12 * 60, 15 * 60];
+const SLOT_START_MINUTES = [20 * 60];
 const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
   {
     id: 'emergency-1',
@@ -239,13 +239,15 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeDateKey, setActiveDateKey] = useState(getLocalDateKey());
-  const [alarmsEnabled, setAlarmsEnabled] = useState(() => (
-    typeof window !== 'undefined' && window.localStorage.getItem('wellness-notifications-enabled') === 'true'
-  ));
+  const [alarmsEnabled, setAlarmsEnabled] = useState(false);
   const [activeAlarmItem, setActiveAlarmItem] = useState<ScheduleItem | null>(null);
   const [alarmSecondsRemaining, setAlarmSecondsRemaining] = useState(0);
   const [triggeredAlarmKeys, setTriggeredAlarmKeys] = useState<string[]>([]);
   const progressWriteTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setAlarmsEnabled(window.localStorage.getItem('wellness-notifications-enabled') === 'true');
+  }, []);
 
   useEffect(() => () => {
     if (progressWriteTimeoutRef.current) {
@@ -512,6 +514,12 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
   }, [isLoading, scheduleItems.length]);
 
   useEffect(() => {
+    if (alarmsEnabled) {
+      void import('@/lib/pushNotifications').then(({ registerPushNotifications }) => registerPushNotifications());
+    }
+  }, [alarmsEnabled]);
+
+  useEffect(() => {
     if (!alarmsEnabled || activeAlarmItem || scheduleItems.length === 0) {
       return;
     }
@@ -594,10 +602,8 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
     setAlarmsEnabled(true);
     window.localStorage.setItem('wellness-notifications-enabled', 'true');
     playAlarmTone();
-
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
+    const { registerPushNotifications } = await import('@/lib/pushNotifications');
+    await registerPushNotifications();
   };
 
   const stopAlarm = () => {
@@ -616,7 +622,7 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
         <div className="mb-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
           {alarmsEnabled ? (
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1 font-medium text-teal-700"><Bell className="h-3.5 w-3.5" /> Alarms on at 9:00 AM, 12:00 PM, and 3:00 PM</span>
+              <span className="flex items-center gap-1 font-medium text-teal-700"><Bell className="h-3.5 w-3.5" /> Test alarm set for 8:00 PM</span>
               <button type="button" onClick={() => { setAlarmsEnabled(false); window.localStorage.setItem('wellness-notifications-enabled', 'false'); }} className="font-semibold text-slate-500 hover:text-slate-800">Turn off</button>
             </div>
           ) : (

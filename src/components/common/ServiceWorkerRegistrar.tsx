@@ -2,11 +2,11 @@
 
 import { useEffect } from 'react';
 
-// Registers the notification service worker once per app load.
+// Registers the Firebase Messaging service worker once per app load.
 export default function ServiceWorkerRegistrar() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((error) => {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js').catch((error) => {
         console.error('Service worker registration failed', error);
       });
     }

@@ -42,6 +42,10 @@ export default function EmployeeNav() {
   const handleLogout = async () => {
     const { signOut } = await import('firebase/auth');
     const { auth } = await import('@/lib/firebase');
+    const { unregisterPushNotifications } = await import('@/lib/pushNotifications');
+    await unregisterPushNotifications().catch((error) => {
+      console.error('Failed to unregister push notifications during logout', error);
+    });
     await signOut(auth);
     document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
     document.cookie = 'role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
