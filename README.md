@@ -289,6 +289,8 @@ All mock data is in `src/lib/mockData.ts` and can be replaced with real Firestor
   - Add its public key as `NEXT_PUBLIC_FIREBASE_VAPID_KEY` and set a long `CRON_SECRET` in the deployment environment.
   - Configure a trusted scheduler to POST to `/api/notifications/send` at the desired times with the `x-cron-secret` header. The request body may be `{ "title": "Wellness activity time", "body": "Time for your activity", "url": "/dashboard" }`.
   - After an employee enables alarms, their browser token is stored and can receive notifications with the tab or browser closed. Tokens are removed during logout.
+  - Add `RESEND_API_KEY`, `EMAIL_FROM`, and `APP_URL` to send schedule reminders by email as well. The sender domain in `EMAIL_FROM` must be verified in Resend.
+  - The Vercel cron schedules in `vercel.json` call the protected endpoint once at 9:00 AM, 12:00 PM, and 3:00 PM UTC. Each run reads active employees once and sends one email and one push notification per subscribed device; it does not create recurring Firestore reminder records.
 
 6. **Mobile App**
    - React Native adaptation

@@ -8,7 +8,6 @@ import {
   Dumbbell,
   TrendingUp,
   BookOpen,
-  Trophy,
   MessageSquare,
   UserCircle,
   Menu,
@@ -32,7 +31,6 @@ export default function EmployeeNav() {
     { label: 'Activities', href: '/activities', Icon: Dumbbell },
     { label: 'Education', href: '/education', Icon: BookOpen },
     { label: 'Progress', href: '/progress', Icon: TrendingUp },
-    { label: 'Challenges', href: '/challenges', Icon: Trophy },
     { label: 'Feedback', href: '/feedback', Icon: MessageSquare },
     { label: 'Profile', href: '/profile', Icon: UserCircle },
   ];

@@ -63,6 +63,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Employees may submit feedback under their own account. Only admins may review it.
+    match /feedback/{feedbackId} {
+      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if isAdmin();
+    }
+
     // Default deny for everything else.
     match /{document=**} {
       allow read, write: if false;

@@ -65,7 +65,7 @@ const DEEP_BREATHING_ANIMATION_KEY = 'deep-breathing';
 const BREATHING_EXERCISE_ANIMATION_KEY = 'breathing-exercise';
 const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
 const ALARM_DURATION_SECONDS = 180;
-const SLOT_START_MINUTES = [20 * 60];
+const SLOT_START_MINUTES = [9 * 60, 12 * 60, 15 * 60];
 const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
   {
     id: 'emergency-1',
@@ -579,6 +579,10 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
   const completedSet = useMemo(() => new Set(completedIds), [completedIds]);
 
   const handleOpenItem = (item: ScheduleItem) => {
+    if (completedSet.has(item.id)) {
+      return;
+    }
+
     setSelectedItem(item);
     setSecondsRemaining(item.duration * 60);
     setIsTimerRunning(false);
@@ -596,6 +600,7 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
 
   const markComplete = (itemId: string) => {
     setCompletedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+    closeModal();
   };
 
   const enableAlarms = async () => {
@@ -622,7 +627,7 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
         <div className="mb-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
           {alarmsEnabled ? (
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1 font-medium text-teal-700"><Bell className="h-3.5 w-3.5" /> Test alarm set for 8:00 PM</span>
+              <span className="flex items-center gap-1 font-medium text-teal-700"><Bell className="h-3.5 w-3.5" /> Alarms on at 9:00 AM, 12:00 PM, and 3:00 PM</span>
               <button type="button" onClick={() => { setAlarmsEnabled(false); window.localStorage.setItem('wellness-notifications-enabled', 'false'); }} className="font-semibold text-slate-500 hover:text-slate-800">Turn off</button>
             </div>
           ) : (
@@ -664,7 +669,9 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
-                    <p className="text-[11px] text-slate-500">{item.time} | {item.duration}min</p>
+                    <p className={isCompleted ? 'text-[11px] font-semibold text-emerald-700' : 'text-[11px] text-slate-500'}>
+                      {isCompleted ? 'Completed' : `${item.time} | ${item.duration}min`}
+                    </p>
                   </div>
                   {isCompleted ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}
                 </button>

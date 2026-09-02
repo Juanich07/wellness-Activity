@@ -18,7 +18,7 @@ function resolveRole(token: DecodedToken) {
 // Protected routes configuration
 const PROTECTED_ROUTES = {
   admin: ['/admin'],
-  employee: ['/dashboard', '/activities', '/break', '/check-in', '/progress', '/education', '/challenges', '/feedback', '/profile'],
+  employee: ['/dashboard', '/activities', '/break', '/check-in', '/progress', '/education', '/feedback', '/profile'],
   auth: ['/login'],
 };
 
