@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Lottie } from 'lottie-react';
 import { Bell, BellOff, CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
@@ -244,6 +244,13 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
   const [activeAlarmItem, setActiveAlarmItem] = useState<ScheduleItem | null>(null);
   const [alarmSecondsRemaining, setAlarmSecondsRemaining] = useState(0);
   const [triggeredAlarmKeys, setTriggeredAlarmKeys] = useState<string[]>([]);
+  const progressWriteTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (progressWriteTimeoutRef.current) {
+      window.clearTimeout(progressWriteTimeoutRef.current);
+    }
+  }, []);
 
   const iconMap: Record<string, string> = {
     Stretching: 'Accessibility',
@@ -440,7 +447,16 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
 
     onProgressChange?.(completedIds.length, scheduleItems.length);
     const userId = auth.currentUser?.uid;
-    if (userId && scheduleItems.length > 0) {
+    if (!userId || scheduleItems.length === 0) {
+      return;
+    }
+
+    // Debounce Firestore writes so rapid taps coalesce into a single write and stay within quota.
+    if (progressWriteTimeoutRef.current) {
+      window.clearTimeout(progressWriteTimeoutRef.current);
+    }
+
+    progressWriteTimeoutRef.current = window.setTimeout(() => {
       void setDoc(doc(db, DAILY_PROGRESS_COLLECTION, `${userId}_${activeDateKey}`), {
         userId,
         dateKey: activeDateKey,
@@ -452,7 +468,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
       }, { merge: true }).catch((progressError) => {
         console.error('Failed to sync daily progress; local state is preserved.', progressError);
       });
-    }
+    }, 2000);
   }, [activeDateKey, completedIds, onProgressChange, scheduleItems, startedIds]);
 
   useEffect(() => {
