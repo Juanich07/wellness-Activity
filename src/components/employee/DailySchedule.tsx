@@ -57,6 +57,7 @@ type DailyProgressDocument = PersistedDailyPlan & {
 
 const DAILY_PLAN_STORAGE_KEY = 'wellness-daily-plan-v1';
 const DAILY_PROGRESS_COLLECTION = 'dailyProgress';
+const EMPTY_SCHEDULE_ITEMS: ScheduleItem[] = [];
 const WALKING_OFFICE_ANIMATION_KEY = 'walking-office-man';
 const EXERCISE_IN_OFFICE_ANIMATION_KEY = 'exercise-in-office';
 const FOREARM_STRETCH_ANIMATION_KEY = 'forearm-stretch';
@@ -229,7 +230,7 @@ const playAlarmTone = () => {
  * DailySchedule Component
  * Random 3 activities per day with timer + completion tracking.
  */
-export default function DailySchedule({ items = [], onProgressChange }: DailyScheduleProps) {
+export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgressChange }: DailyScheduleProps) {
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(items.slice(0, 3));
   const [completedIds, setCompletedIds] = useState<string[]>([]);
   const [startedIds, setStartedIds] = useState<string[]>([]);
@@ -260,7 +261,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     'Desk exercises': 'Monitor',
   };
 
-  const fallbackActivities: ScheduleSourceActivity[] = mockActivities.map((activity) => ({
+  const fallbackActivities: ScheduleSourceActivity[] = useMemo(() => mockActivities.map((activity) => ({
     id: String(activity.activityId),
     title: activity.title,
     description: activity.description,
@@ -269,7 +270,7 @@ export default function DailySchedule({ items = [], onProgressChange }: DailySch
     difficulty: String(activity.difficulty || ''),
     animationKey: '',
     icon: String(activity.icon || ''),
-  }));
+  })), []);
 
   const applyDailyPlan = async (sourceActivities: ScheduleSourceActivity[]) => {
     const todayKey = getLocalDateKey();
