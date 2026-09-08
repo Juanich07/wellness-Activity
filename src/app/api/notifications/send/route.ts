@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
-import { getAdminDb } from '@/lib/firebaseAdmin';
+import nodemailer from 'nodemailer';
+import { getAdminAuth, getAdminDb } from '@/lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 
@@ -14,10 +14,36 @@ function text(value: unknown, fallback: string) {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
 
-function isAuthorized(request: NextRequest) {
+async function isAdminBearerToken(bearerToken: string | undefined) {
+  if (!bearerToken) {
+    return false;
+  }
+
+  try {
+    const adminAuth = await getAdminAuth();
+    const decoded = await adminAuth.verifyIdToken(bearerToken);
+    if ((decoded as { role?: string }).role === 'admin') {
+      return true;
+    }
+
+    const adminDb = await getAdminDb();
+    const adminDoc = await adminDb.collection('admin').doc(decoded.uid).get();
+    return adminDoc.exists && adminDoc.get('active') === true;
+  } catch (error) {
+    console.error('Failed to verify admin token for manual send', error);
+    return false;
+  }
+}
+
+// Allows either the scheduler's CRON_SECRET or a signed-in admin's Firebase ID token to trigger a send.
+async function isAuthorized(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const bearerToken = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  return Boolean(secret) && (request.headers.get('x-cron-secret') === secret || bearerToken === secret);
+  if (secret && (request.headers.get('x-cron-secret') === secret || bearerToken === secret)) {
+    return true;
+  }
+
+  return isAdminBearerToken(bearerToken);
 }
 
 function escapeHtml(value: string) {
@@ -59,9 +85,9 @@ async function sendNotificationBatch(title: string, body: string, url: string) {
 }
 
 async function sendEmailReminders(title: string, body: string, url: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+  if (!gmailUser || !gmailAppPassword) {
     return { configured: false, recipients: 0, sent: 0 };
   }
 
@@ -71,25 +97,37 @@ async function sendEmailReminders(title: string, body: string, url: string) {
     .map((document: any) => String(document.get('email') ?? '').trim())
     .filter((email: string) => Boolean(email)))];
   const appUrl = new URL(url, process.env.APP_URL ?? 'http://localhost:3000').toString();
-  const resend = new Resend(apiKey);
-  let sent = 0;
+  const from = process.env.EMAIL_FROM || `Wellness App <${gmailUser}>`;
 
-  for (let index = 0; index < emailAddresses.length; index += 100) {
-    const recipients = emailAddresses.slice(index, index + 100);
-    const { data, error } = await resend.batch.send(recipients.map((email) => ({
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailAppPassword },
+  });
+
+  let sent = 0;
+  let lastError: string | undefined;
+  const CONCURRENCY = 5;
+
+  for (let index = 0; index < emailAddresses.length; index += CONCURRENCY) {
+    const batch = emailAddresses.slice(index, index + CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((email) => transporter.sendMail({
       from,
-      to: [email],
+      to: email,
       subject: title,
       html: `<p>${escapeHtml(body)}</p><p><a href="${appUrl}">Open your wellness schedule</a></p>`,
     })));
-    if (error) {
-      console.error('Resend rejected an email reminder batch', error);
-      return { configured: true, recipients: emailAddresses.length, sent, error: error.message };
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        sent += 1;
+      } else {
+        lastError = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        console.error('Gmail SMTP rejected an email reminder', result.reason);
+      }
     }
-    sent += data?.data.length ?? 0;
   }
 
-  return { configured: true, recipients: emailAddresses.length, sent };
+  return { configured: true, recipients: emailAddresses.length, sent, ...(lastError ? { error: lastError } : {}) };
 }
 
 async function sendReminders(title: string, body: string, url: string) {
@@ -101,7 +139,7 @@ async function sendReminders(title: string, body: string, url: string) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -118,7 +156,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

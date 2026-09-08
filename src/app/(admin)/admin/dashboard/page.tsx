@@ -17,6 +17,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import Card from '@/components/common/Card';
 import ProgressRing from '@/components/common/ProgressRing';
+import EmailReminderPanel from '@/components/admin/EmailReminderPanel';
 import { db } from '@/lib/firebase';
 import { asDailyProgressRecord, getLastSevenDateKeys, getLocalDateKey, DailyProgressRecord } from '@/lib/dailyProgress';
 
@@ -194,6 +195,8 @@ export default function AdminDashboard() {
             </ResponsiveContainer>
           </div>
         </Card>
+
+        <EmailReminderPanel />
       </div>
     </div>
   );
