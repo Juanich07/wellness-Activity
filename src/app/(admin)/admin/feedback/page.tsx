@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { AlertCircle, MessageSquare, Star } from 'lucide-react';
+import { collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { AlertCircle, MessageSquare, Star, Trash2 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import { db } from '@/lib/firebase';
 
@@ -28,6 +28,7 @@ export default function AdminFeedbackPage() {
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -76,6 +77,22 @@ export default function AdminFeedbackPage() {
 
     return (feedback.reduce((total, item) => total + item.rating, 0) / feedback.length).toFixed(1);
   }, [feedback]);
+
+  const handleDelete = async (feedbackId: string) => {
+    if (!window.confirm('Delete this feedback entry? This cannot be undone.')) {
+      return;
+    }
+
+    setDeletingId(feedbackId);
+    try {
+      await deleteDoc(doc(db, 'feedback', feedbackId));
+    } catch (deleteError) {
+      console.error('Failed to delete feedback', deleteError);
+      window.alert('Failed to delete this feedback entry. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -126,6 +143,17 @@ export default function AdminFeedbackPage() {
                   </div>
                 </div>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{item.message || 'No message provided.'}</p>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(item.id)}
+                    disabled={deletingId === item.id}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {deletingId === item.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
