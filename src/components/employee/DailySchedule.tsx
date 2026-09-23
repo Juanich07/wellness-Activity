@@ -427,6 +427,8 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
 
       return [...current, selectedItem.id];
     });
+    setSelectedItem(null);
+    setSecondsRemaining(0);
   }, [isTimerRunning, secondsRemaining, selectedItem]);
 
   useEffect(() => {
@@ -545,11 +547,6 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
     setSelectedItem(null);
     setIsTimerRunning(false);
     setSecondsRemaining(0);
-  };
-
-  const markComplete = (itemId: string) => {
-    setCompletedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
-    closeModal();
   };
 
   const enableAlarms = async () => {
@@ -701,14 +698,6 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
                 >
                   <RotateCcw className="h-4 w-4" />
                   Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => markComplete(selectedItem.id)}
-                  onMouseDown={() => markStarted(selectedItem.id)}
-                  className="rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700"
-                >
-                  Mark Complete
                 </button>
               </div>
             </div>
