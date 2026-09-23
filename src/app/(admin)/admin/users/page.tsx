@@ -26,6 +26,7 @@ type UserFormState = {
   email: string;
   department: string;
   password: string;
+  confirmPassword: string;
   role: UserRole;
   active: boolean;
 };
@@ -36,6 +37,7 @@ const defaultFormState: UserFormState = {
   email: '',
   department: '',
   password: '',
+  confirmPassword: '',
   role: 'employee',
   active: true,
 };
@@ -246,6 +248,7 @@ export default function AdminUsersPage() {
       email: normalizeText(user.email),
       department: normalizeText(user.department),
       password: '',
+      confirmPassword: '',
       role: user.role === 'admin' ? 'admin' : 'employee',
       active: user.active !== false,
     });
@@ -264,8 +267,14 @@ export default function AdminUsersPage() {
 
   const handleSaveUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSaving(true);
     setError('');
+
+    if (form.password.trim() && form.password.trim() !== form.confirmPassword.trim()) {
+      setError('New password and confirm password do not match.');
+      return;
+    }
+
+    setSaving(true);
 
     try {
       const payload = {
@@ -516,7 +525,7 @@ export default function AdminUsersPage() {
 
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-700">
-                    Password {editingUser ? '(leave blank to keep current)' : ''}
+                    New Password {editingUser ? '(leave blank to keep current)' : ''}
                   </span>
                   <input
                     type="password"
@@ -524,6 +533,18 @@ export default function AdminUsersPage() {
                     onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                     placeholder={editingUser ? 'Optional password reset' : 'Minimum 6 characters'}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-sm font-medium text-slate-700">Confirm Password</span>
+                  <input
+                    type="password"
+                    value={form.confirmPassword}
+                    onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                    disabled={!form.password.trim()}
+                    placeholder={form.password.trim() ? 'Re-enter the new password' : 'Enter a new password first'}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 disabled:bg-slate-100"
                   />
                 </label>
               </div>

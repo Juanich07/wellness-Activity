@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminAuth } from '@/lib/firebaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -312,6 +313,7 @@ export async function PATCH(request: NextRequest) {
     const name = normalizeString(body.name);
     const email = normalizeString(body.email);
     const department = normalizeString(body.department);
+    const password = normalizeString(body.password);
     const role = body.role;
     const active = body.active !== false;
 
@@ -323,8 +325,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Email is required.' }, { status: 400 });
     }
 
+    if (password && password.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+    }
+
     if (!isRole(role)) {
       return NextResponse.json({ error: 'Role must be admin or employee.' }, { status: 400 });
+    }
+
+    if (password) {
+      const adminAuth = await getAdminAuth();
+      await adminAuth.updateUser(userUid, { password });
+      console.log('PATCH: Auth password updated', { userUid });
     }
 
     console.log('PATCH: Updating Firestore user metadata', { userUid, role });

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { collection, doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Lottie } from 'lottie-react';
-import { Bell, BellOff, CheckCircle2, Clock3, Pause, Play, RotateCcw, X } from 'lucide-react';
+import { Bell, BellOff, CheckCircle2, Clock3, Pause, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { Icon } from '@/components/common/Icon';
 import Card from '@/components/common/Card';
 import walkingOfficeManAnimation from '@/assets/animations/walking-office-man.json';
@@ -12,7 +12,6 @@ import forearmStretchAnimation from '@/assets/animations/forearm-stretch.json';
 import deepBreathingAnimation from '@/assets/animations/deep-breathing.json';
 import breathingExerciseAnimation from '@/assets/animations/breathing-exercise.json';
 import { auth, db } from '@/lib/firebase';
-import { mockActivities } from '@/lib/mockData';
 import { safeNotify } from '@/lib/notify';
 
 interface ScheduleItem {
@@ -66,48 +65,6 @@ const BREATHING_EXERCISE_ANIMATION_KEY = 'breathing-exercise';
 const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM'];
 const ALARM_DURATION_SECONDS = 180;
 const SLOT_START_MINUTES = [9 * 60, 12 * 60, 15 * 60];
-const EMERGENCY_ACTIVITIES: ScheduleSourceActivity[] = [
-  {
-    id: 'emergency-1',
-    title: 'Morning Stretching Routine',
-    description: 'Gentle full-body stretching to start your day.',
-    type: 'Stretching',
-    duration: 10,
-    difficulty: 'Easy',
-    animationKey: '',
-    icon: 'Accessibility',
-  },
-  {
-    id: 'emergency-2',
-    title: 'Walk Around the Office',
-    description: 'Step away from your workstation and take a short walk around your office.',
-    type: 'Walking',
-    duration: 5,
-    difficulty: 'Easy',
-    animationKey: 'walking-office-man',
-    icon: 'Footprints',
-  },
-  {
-    id: 'emergency-3',
-    title: 'Desk Exercise Break',
-    description: 'Quick desk-safe movements to loosen up and improve circulation.',
-    type: 'Desk exercises',
-    duration: 8,
-    difficulty: 'Easy',
-    animationKey: EXERCISE_IN_OFFICE_ANIMATION_KEY,
-    icon: 'Monitor',
-  },
-  {
-    id: 'emergency-4',
-    title: 'Aerobic Dance Session',
-    description: 'Fun and energetic movement to boost heart rate and mood.',
-    type: 'Aerobic',
-    duration: 12,
-    difficulty: 'Medium',
-    animationKey: '',
-    icon: 'Music2',
-  },
-];
 
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -244,6 +201,8 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
   const [alarmSecondsRemaining, setAlarmSecondsRemaining] = useState(0);
   const [triggeredAlarmKeys, setTriggeredAlarmKeys] = useState<string[]>([]);
   const progressWriteTimeoutRef = useRef<number | null>(null);
+  const [validActivityIds, setValidActivityIds] = useState<Set<string> | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     setAlarmsEnabled(window.localStorage.getItem('wellness-notifications-enabled') === 'true');
@@ -262,17 +221,6 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
     Strengthening: 'Dumbbell',
     'Desk exercises': 'Monitor',
   };
-
-  const fallbackActivities: ScheduleSourceActivity[] = useMemo(() => mockActivities.map((activity) => ({
-    id: String(activity.activityId),
-    title: activity.title,
-    description: activity.description,
-    type: activity.category,
-    duration: Number(activity.durationMinutes || 5),
-    difficulty: String(activity.difficulty || ''),
-    animationKey: '',
-    icon: String(activity.icon || ''),
-  })), []);
 
   const applyDailyPlan = async (sourceActivities: ScheduleSourceActivity[]) => {
     const todayKey = getLocalDateKey();
@@ -365,30 +313,59 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
     setIsLoading(false);
   };
 
+  const mapActivityDocs = (docs: { id: string; data: () => Record<string, unknown> }[]): ScheduleSourceActivity[] =>
+    docs
+      .map((documentSnapshot) => ({
+        id: documentSnapshot.id,
+        title: String(documentSnapshot.data().title ?? '').trim(),
+        description: String(documentSnapshot.data().description ?? '').trim(),
+        type: String(documentSnapshot.data().category ?? 'Activity').trim() || 'Activity',
+        duration: Number(documentSnapshot.data().durationMinutes ?? 5),
+        difficulty: String(documentSnapshot.data().difficulty ?? '').trim(),
+        animationKey: String(documentSnapshot.data().animationKey ?? '').trim(),
+        icon: String(documentSnapshot.data().icon ?? '').trim(),
+        active: documentSnapshot.data().active !== false,
+      }))
+      .filter((activity) => activity.active && activity.title)
+      .map(({ active, ...activity }) => activity);
+
+  const refreshActivities = async () => {
+    setIsRefreshing(true);
+    try {
+      const snapshot = await getDocs(collection(db, 'activities'));
+      const allActivities = mapActivityDocs(snapshot.docs);
+      setValidActivityIds(new Set(allActivities.map((activity) => activity.id)));
+      await applyDailyPlan(allActivities);
+    } catch (refreshError) {
+      console.error('Failed to refresh schedule activities', refreshError);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
+    // One-time fetch on mount so the schedule loads immediately even if the realtime
+    // listener below is slow to connect; the listener then keeps it in sync afterward.
+    void getDocs(collection(db, 'activities')).then((snapshot) => {
+      const allActivities = mapActivityDocs(snapshot.docs);
+      setValidActivityIds(new Set(allActivities.map((activity) => activity.id)));
+      void applyDailyPlan(allActivities);
+    }).catch((initialLoadError) => {
+      console.error('Failed to fetch initial schedule activities', initialLoadError);
+    });
+
     const unsubscribe = onSnapshot(
       collection(db, 'activities'),
       (snapshot) => {
-        const allActivities: ScheduleSourceActivity[] = snapshot.docs
-          .map((documentSnapshot) => ({
-            id: documentSnapshot.id,
-            title: String(documentSnapshot.data().title ?? '').trim(),
-            description: String(documentSnapshot.data().description ?? '').trim(),
-            type: String(documentSnapshot.data().category ?? 'Activity').trim() || 'Activity',
-            duration: Number(documentSnapshot.data().durationMinutes ?? 5),
-            difficulty: String(documentSnapshot.data().difficulty ?? '').trim(),
-            animationKey: String(documentSnapshot.data().animationKey ?? '').trim(),
-            icon: String(documentSnapshot.data().icon ?? '').trim(),
-            active: documentSnapshot.data().active !== false,
-          }))
-          .filter((activity) => activity.active && activity.title)
-          .map(({ active, ...activity }) => activity);
+        // Skip an empty snapshot served from the local cache before the first server sync completes,
+        // otherwise a brand-new session briefly (and incorrectly) treats "not synced yet" as "no activities".
+        if (snapshot.empty && snapshot.metadata.fromCache) {
+          return;
+        }
 
-        const source = allActivities.length > 0
-          ? allActivities
-          : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
-
-        void applyDailyPlan(source);
+        const allActivities = mapActivityDocs(snapshot.docs);
+        setValidActivityIds(new Set(allActivities.map((activity) => activity.id)));
+        void applyDailyPlan(allActivities);
       },
       (error) => {
         console.error('Failed to load schedule activities', error);
@@ -403,16 +380,27 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
           icon: item.icon || '',
         }));
 
-        const source = fromPropItems.length > 0
-          ? fromPropItems
-          : (fallbackActivities.length > 0 ? fallbackActivities : EMERGENCY_ACTIVITIES);
-
-        void applyDailyPlan(source);
+        setValidActivityIds(new Set(fromPropItems.map((activity) => activity.id)));
+        void applyDailyPlan(fromPropItems);
       }
     );
 
     return () => unsubscribe();
-  }, [items, fallbackActivities]);
+  }, [items]);
+
+  // Immediately drop any displayed activity that an admin removes or deactivates, without waiting for a refresh.
+  useEffect(() => {
+    if (!validActivityIds) {
+      return;
+    }
+
+    setScheduleItems((current) => {
+      const filtered = current.filter((item) => validActivityIds.has(item.id));
+      return filtered.length === current.length ? current : filtered;
+    });
+    setCompletedIds((current) => current.filter((id) => validActivityIds.has(id)));
+    setStartedIds((current) => current.filter((id) => validActivityIds.has(id)));
+  }, [validActivityIds]);
 
   useEffect(() => {
     if (!selectedItem || !isTimerRunning || secondsRemaining <= 0) {
@@ -473,45 +461,6 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
       });
     }, 2000);
   }, [activeDateKey, completedIds, onProgressChange, scheduleItems, startedIds]);
-
-  useEffect(() => {
-    if (isLoading || scheduleItems.length > 0) {
-      return;
-    }
-
-    const todayKey = getLocalDateKey();
-    const emergencyIds = shuffle(EMERGENCY_ACTIVITIES.map((activity) => activity.id)).slice(0, 3);
-    const emergencySchedule = emergencyIds
-      .map((id, index) => {
-        const found = EMERGENCY_ACTIVITIES.find((activity) => activity.id === id);
-        if (!found) {
-          return null;
-        }
-
-        return {
-          id: found.id,
-          title: found.title,
-          time: TIME_SLOTS[index] ?? `${9 + index}:00 AM`,
-          type: found.type,
-          duration: found.duration,
-          description: found.description,
-          difficulty: found.difficulty,
-          animationKey: found.animationKey,
-          icon: found.icon,
-        } as ScheduleItem;
-      })
-      .filter((activity): activity is ScheduleItem => Boolean(activity));
-
-    setActiveDateKey(todayKey);
-    setScheduleItems(emergencySchedule);
-    setStartedIds([]);
-    setCompletedIds([]);
-    writePersistedPlan({
-      dateKey: todayKey,
-      ids: emergencySchedule.map((activity) => activity.id),
-      completedIds: [],
-    });
-  }, [isLoading, scheduleItems.length]);
 
   useEffect(() => {
     if (alarmsEnabled) {
@@ -621,7 +570,15 @@ export default function DailySchedule({ items = EMPTY_SCHEDULE_ITEMS, onProgress
       <Card className="rounded-[22px] bg-[#f5f8f8] p-4 shadow-none ring-0">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900">Schedule</h3>
-          <span className="text-lg text-slate-400">...</span>
+          <button
+            type="button"
+            onClick={() => void refreshActivities()}
+            disabled={isRefreshing}
+            aria-label="Refresh schedule from Wellness Activity Management"
+            className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-teal-600 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          </button>
         </div>
 
         <div className="mb-3 rounded-xl bg-white px-3 py-2 text-xs shadow-sm">
