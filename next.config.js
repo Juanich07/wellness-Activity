@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Keep firebase-admin (and its jose/jwks-rsa dependency chain) as native Node
+  // requires instead of being bundled by webpack, which breaks on jose's ESM-only build.
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin'],
+  },
   images: {
     remotePatterns: [
       {
